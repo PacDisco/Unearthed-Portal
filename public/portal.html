@@ -1,34 +1,34 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Portal</title>
+  <title>Unearthed Portal</title>
 
   <style>
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #f4f4f4;
-      color: #111;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      background: #111;
+      color: #f5f5f5;
     }
 
     /* HEADER */
     header {
-      background: #000;
-      color: #fff;
-      padding: 30px 20px;
       text-align: center;
+      padding: 50px 20px 30px;
+      border-bottom: 1px solid #222;
     }
 
     header h1 {
-      margin: 0;
-      font-size: 24px;
-      letter-spacing: 2px;
+      font-size: 20px;
+      letter-spacing: 3px;
+      font-weight: 500;
     }
 
     header p {
-      margin-top: 5px;
-      font-size: 14px;
-      opacity: 0.7;
+      font-size: 12px;
+      letter-spacing: 2px;
+      opacity: 0.6;
+      margin-top: 8px;
     }
 
     /* GRID */
@@ -36,49 +36,68 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 20px;
-      padding: 30px;
+      padding: 40px;
       max-width: 1000px;
       margin: auto;
     }
 
     /* TILE */
     .tile {
-      background: #dcdcdc;
-      border-radius: 6px;
-      padding: 40px 20px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      padding: 50px 20px;
       text-align: center;
       cursor: pointer;
-      transition: all 0.2s ease;
-      font-weight: 600;
-      letter-spacing: 1px;
+      transition: all 0.25s ease;
+      font-size: 12px;
+      letter-spacing: 2px;
     }
 
     .tile:hover {
-      background: #c9c9c9;
-      transform: translateY(-3px);
+      background: #222;
+      transform: translateY(-4px);
+      border-color: #444;
     }
 
     /* CONTENT */
     #content {
       max-width: 900px;
-      margin: 20px auto 40px;
-      padding: 30px;
-      background: white;
-      border-radius: 6px;
-      box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+      margin: 30px auto 60px;
+      padding: 40px;
+      background: #181818;
+      border: 1px solid #2a2a2a;
+      line-height: 1.6;
     }
 
     iframe {
       border: none;
-      margin-top: 20px;
+      margin-top: 30px;
       width: 100%;
       height: 600px;
     }
 
+    /* LINKS INSIDE CONTENT */
+    a {
+      color: #e6d3a3;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
     /* MOBILE */
     @media (max-width: 600px) {
-      .tile {
-        padding: 25px 15px;
+      header {
+        padding: 30px 15px;
+      }
+
+      .grid {
+        padding: 20px;
+      }
+
+      #content {
+        padding: 25px;
       }
     }
   </style>
@@ -87,8 +106,8 @@
 <body>
 
 <header>
-  <h1 id="title">LOADING...</h1>
-  <p>Student Portal</p>
+  <h1 id="title">UNEARTHED</h1>
+  <p>STUDENT PORTAL</p>
 </header>
 
 <div class="grid">
@@ -98,19 +117,19 @@
   </div>
 
   <div class="tile" onclick="loadSection('destination_overview_content')">
-    DESTINATION OVERVIEW
+    DESTINATION
   </div>
 
   <div class="tile" onclick="loadSection('travel_information_content')">
-    TRAVEL INFORMATION
+    TRAVEL
   </div>
 
   <div class="tile" onclick="loadSection('general_information_content')">
-    GENERAL INFO
+    GENERAL
   </div>
 
   <div id="familyTile" class="tile" onclick="loadSection('family_information_content')">
-    FAMILY AREA
+    FAMILY
   </div>
 
   <div id="paymentsTile" class="tile" onclick="loadSection('payments_information_content')">
@@ -131,8 +150,6 @@
     const res = await fetch(`/.netlify/functions/portal?email=${email}`);
     const data = await res.json();
 
-    console.log("PORTAL DATA:", data);
-
     if (data.error) {
       document.body.innerHTML = `<h1>${data.error}</h1>`;
       return;
@@ -141,7 +158,7 @@
     portalData = data;
 
     document.getElementById("title").innerText =
-      portalData.portal_title || "PORTAL";
+      portalData.portal_title || "UNEARTHED";
 
     applyVisibility(portalData.labels);
 
@@ -152,17 +169,13 @@
     let html = portalData[field] || "No content available";
 
     if (field === "payments_information_content" && portalData.payments_form_url) {
-      html += `
-        <iframe src="${portalData.payments_form_url}"></iframe>
-      `;
+      html += `<iframe src="${portalData.payments_form_url}"></iframe>`;
     }
 
     document.getElementById("content").innerHTML = html;
   }
 
   function applyVisibility(labels) {
-    console.log("LABELS:", labels);
-
     if (!labels.includes("parent")) {
       document.getElementById("familyTile").style.display = "none";
     }
