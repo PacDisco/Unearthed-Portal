@@ -1,1 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Portal</title>
+</head>
+<body>
 
+<h1 id="title"></h1>
+
+<div id="dashboard">
+  <button onclick="loadSection('trip_information_content')">Trip Info</button>
+  <button onclick="loadSection('destination_overview_content')">Destination</button>
+  <button onclick="loadSection('travel_information_content')">Travel</button>
+  <button onclick="loadSection('general_information_content')">General</button>
+  <button onclick="loadSection('family_information_content')">Family</button>
+  <button onclick="loadSection('payments_information_content')">Payments</button>
+</div>
+
+<hr>
+
+<div id="content"></div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const email = params.get("email");
+
+  let portalData = {};
+
+  async function init() {
+    const res = await fetch(`/api/portal?email=${email}`);
+    portalData = await res.json();
+
+    document.getElementById("title").innerText =
+      portalData.portal_title || "Portal";
+
+    loadSection("trip_information_content");
+  }
+
+  function loadSection(field) {
+    document.getElementById("content").innerHTML =
+      portalData[field] || "No content yet";
+  }
+
+  init();
+</script>
+
+</body>
+</html>
