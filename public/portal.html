@@ -2,21 +2,71 @@
 <html>
 <head>
   <title>Portal</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f5f5f5;
+    }
+
+    header {
+      background: black;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      padding: 30px;
+      max-width: 900px;
+      margin: auto;
+    }
+
+    .tile {
+      background: #ddd;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+
+    .tile:hover {
+      background: #bbb;
+    }
+
+    #content {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+      background: white;
+    }
+  </style>
 </head>
+
 <body>
 
-<h1 id="title"></h1>
+<header>
+  <h1 id="title">Loading...</h1>
+</header>
 
-<div id="dashboard">
-  <button onclick="loadSection('trip_information_content')">Trip Info</button>
-  <button onclick="loadSection('destination_overview_content')">Destination</button>
-  <button onclick="loadSection('travel_information_content')">Travel</button>
-  <button onclick="loadSection('general_information_content')">General</button>
-  <button onclick="loadSection('family_information_content')">Family</button>
-  <button onclick="loadSection('payments_information_content')">Payments</button>
+<div class="grid">
+  <div class="tile" onclick="loadSection('trip_information_content')">Trip Information</div>
+  <div class="tile" onclick="loadSection('destination_overview_content')">Destination Overview</div>
+  <div class="tile" onclick="loadSection('travel_information_content')">Travel Information</div>
+  <div class="tile" onclick="loadSection('general_information_content')">General Info</div>
+
+  <div id="familyTile" class="tile" onclick="loadSection('family_information_content')">
+    Family Area
+  </div>
+
+  <div id="paymentsTile" class="tile" onclick="loadSection('payments_information_content')">
+    Payments
+  </div>
 </div>
-
-<hr>
 
 <div id="content"></div>
 
@@ -27,18 +77,56 @@
   let portalData = {};
 
   async function init() {
-    const res = await fetch(`/api/portal?email=${email}`);
-    portalData = await res.json();
+    const res = await fetch(`/.netlify/functions/portal?email=${email}`);
+    const data = await res.json();
+
+    console.log("PORTAL DATA:", data);
+
+    if (data.error) {
+      document.body.innerHTML = `<h1>${data.error}</h1>`;
+      return;
+    }
+
+    portalData = data;
 
     document.getElementById("title").innerText =
       portalData.portal_title || "Portal";
+
+    applyVisibility(portalData.labels);
 
     loadSection("trip_information_content");
   }
 
   function loadSection(field) {
-    document.getElementById("content").innerHTML =
-      portalData[field] || "No content yet";
+    let html = portalData[field] || "No content available";
+
+    // Add Jotform iframe for payments
+    if (field === "payments_information_content" && portalData.payments_form_url) {
+      html += `
+        <iframe 
+          src="${portalData.payments_form_url}" 
+          width="100%" 
+          height="600" 
+          style="margin-top:20px; border:none;">
+        </iframe>
+      `;
+    }
+
+    document.getElementById("content").innerHTML = html;
+  }
+
+  function applyVisibility(labels) {
+    console.log("LABELS:", labels);
+
+    // Hide family unless parent
+    if (!labels.includes("parent")) {
+      document.getElementById("familyTile").style.display = "none";
+    }
+
+    // Hide payments unless parent or student
+    if (!labels.includes("parent") && !labels.includes("student")) {
+      document.getElementById("paymentsTile").style.display = "none";
+    }
   }
 
   init();
