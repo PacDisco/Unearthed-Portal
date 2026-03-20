@@ -2,47 +2,84 @@
 <html>
 <head>
   <title>Portal</title>
+
   <style>
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
-      background: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f4f4f4;
+      color: #111;
     }
 
+    /* HEADER */
     header {
-      background: black;
-      color: white;
-      padding: 20px;
+      background: #000;
+      color: #fff;
+      padding: 30px 20px;
       text-align: center;
     }
 
+    header h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 2px;
+    }
+
+    header p {
+      margin-top: 5px;
+      font-size: 14px;
+      opacity: 0.7;
+    }
+
+    /* GRID */
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 20px;
       padding: 30px;
-      max-width: 900px;
+      max-width: 1000px;
       margin: auto;
     }
 
+    /* TILE */
     .tile {
-      background: #ddd;
+      background: #dcdcdc;
+      border-radius: 6px;
       padding: 40px 20px;
       text-align: center;
       cursor: pointer;
-      font-weight: bold;
-      transition: 0.2s;
+      transition: all 0.2s ease;
+      font-weight: 600;
+      letter-spacing: 1px;
     }
 
     .tile:hover {
-      background: #bbb;
+      background: #c9c9c9;
+      transform: translateY(-3px);
     }
 
+    /* CONTENT */
     #content {
       max-width: 900px;
-      margin: 20px auto;
-      padding: 20px;
+      margin: 20px auto 40px;
+      padding: 30px;
       background: white;
+      border-radius: 6px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    }
+
+    iframe {
+      border: none;
+      margin-top: 20px;
+      width: 100%;
+      height: 600px;
+    }
+
+    /* MOBILE */
+    @media (max-width: 600px) {
+      .tile {
+        padding: 25px 15px;
+      }
     }
   </style>
 </head>
@@ -50,22 +87,36 @@
 <body>
 
 <header>
-  <h1 id="title">Loading...</h1>
+  <h1 id="title">LOADING...</h1>
+  <p>Student Portal</p>
 </header>
 
 <div class="grid">
-  <div class="tile" onclick="loadSection('trip_information_content')">Trip Information</div>
-  <div class="tile" onclick="loadSection('destination_overview_content')">Destination Overview</div>
-  <div class="tile" onclick="loadSection('travel_information_content')">Travel Information</div>
-  <div class="tile" onclick="loadSection('general_information_content')">General Info</div>
+
+  <div class="tile" onclick="loadSection('trip_information_content')">
+    TRIP INFORMATION
+  </div>
+
+  <div class="tile" onclick="loadSection('destination_overview_content')">
+    DESTINATION OVERVIEW
+  </div>
+
+  <div class="tile" onclick="loadSection('travel_information_content')">
+    TRAVEL INFORMATION
+  </div>
+
+  <div class="tile" onclick="loadSection('general_information_content')">
+    GENERAL INFO
+  </div>
 
   <div id="familyTile" class="tile" onclick="loadSection('family_information_content')">
-    Family Area
+    FAMILY AREA
   </div>
 
   <div id="paymentsTile" class="tile" onclick="loadSection('payments_information_content')">
-    Payments
+    PAYMENTS
   </div>
+
 </div>
 
 <div id="content"></div>
@@ -90,7 +141,7 @@
     portalData = data;
 
     document.getElementById("title").innerText =
-      portalData.portal_title || "Portal";
+      portalData.portal_title || "PORTAL";
 
     applyVisibility(portalData.labels);
 
@@ -100,15 +151,9 @@
   function loadSection(field) {
     let html = portalData[field] || "No content available";
 
-    // Add Jotform iframe for payments
     if (field === "payments_information_content" && portalData.payments_form_url) {
       html += `
-        <iframe 
-          src="${portalData.payments_form_url}" 
-          width="100%" 
-          height="600" 
-          style="margin-top:20px; border:none;">
-        </iframe>
+        <iframe src="${portalData.payments_form_url}"></iframe>
       `;
     }
 
@@ -118,12 +163,10 @@
   function applyVisibility(labels) {
     console.log("LABELS:", labels);
 
-    // Hide family unless parent
     if (!labels.includes("parent")) {
       document.getElementById("familyTile").style.display = "none";
     }
 
-    // Hide payments unless parent or student
     if (!labels.includes("parent") && !labels.includes("student")) {
       document.getElementById("paymentsTile").style.display = "none";
     }
