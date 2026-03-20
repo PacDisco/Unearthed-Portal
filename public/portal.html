@@ -1,192 +1,99 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Unearthed Portal</title>
-
-  <style>
-    body {
-      margin: 0;
-      font-family: "Helvetica Neue", Arial, sans-serif;
-      background: #111;
-      color: #f5f5f5;
-    }
-
-    /* HEADER */
-    header {
-      text-align: center;
-      padding: 50px 20px 30px;
-      border-bottom: 1px solid #222;
-    }
-
-    header h1 {
-      font-size: 20px;
-      letter-spacing: 3px;
-      font-weight: 500;
-    }
-
-    header p {
-      font-size: 12px;
-      letter-spacing: 2px;
-      opacity: 0.6;
-      margin-top: 8px;
-    }
-
-    /* GRID */
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 20px;
-      padding: 40px;
-      max-width: 1000px;
-      margin: auto;
-    }
-
-    /* TILE */
-    .tile {
-      background: #1a1a1a;
-      border: 1px solid #2a2a2a;
-      padding: 50px 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.25s ease;
-      font-size: 12px;
-      letter-spacing: 2px;
-    }
-
-    .tile:hover {
-      background: #222;
-      transform: translateY(-4px);
-      border-color: #444;
-    }
-
-    /* CONTENT */
-    #content {
-      max-width: 900px;
-      margin: 30px auto 60px;
-      padding: 40px;
-      background: #181818;
-      border: 1px solid #2a2a2a;
-      line-height: 1.6;
-    }
-
-    iframe {
-      border: none;
-      margin-top: 30px;
-      width: 100%;
-      height: 600px;
-    }
-
-    /* LINKS INSIDE CONTENT */
-    a {
-      color: #e6d3a3;
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    /* MOBILE */
-    @media (max-width: 600px) {
-      header {
-        padding: 30px 15px;
-      }
-
-      .grid {
-        padding: 20px;
-      }
-
-      #content {
-        padding: 25px;
-      }
-    }
-  </style>
-</head>
-
-<body>
-
-<header>
-  <h1 id="title">UNEARTHED</h1>
-  <p>STUDENT PORTAL</p>
-</header>
-
-<div class="grid">
-
-  <div class="tile" onclick="loadSection('trip_information_content')">
-    TRIP INFORMATION
-  </div>
-
-  <div class="tile" onclick="loadSection('destination_overview_content')">
-    DESTINATION
-  </div>
-
-  <div class="tile" onclick="loadSection('travel_information_content')">
-    TRAVEL
-  </div>
-
-  <div class="tile" onclick="loadSection('general_information_content')">
-    GENERAL
-  </div>
-
-  <div id="familyTile" class="tile" onclick="loadSection('family_information_content')">
-    FAMILY
-  </div>
-
-  <div id="paymentsTile" class="tile" onclick="loadSection('payments_information_content')">
-    PAYMENTS
-  </div>
-
-</div>
-
-<div id="content"></div>
-
-<script>
-  const params = new URLSearchParams(window.location.search);
-  const email = params.get("email");
-
-  let portalData = {};
-
-  async function init() {
-    const res = await fetch(`/.netlify/functions/portal?email=${email}`);
-    const data = await res.json();
-
-    if (data.error) {
-      document.body.innerHTML = `<h1>${data.error}</h1>`;
-      return;
-    }
-
-    portalData = data;
-
-    document.getElementById("title").innerText =
-      portalData.portal_title || "UNEARTHED";
-
-    applyVisibility(portalData.labels);
-
-    loadSection("trip_information_content");
+<style>
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: #f9f8f2;
+    color: #231f20;
   }
 
-  function loadSection(field) {
-    let html = portalData[field] || "No content available";
-
-    if (field === "payments_information_content" && portalData.payments_form_url) {
-      html += `<iframe src="${portalData.payments_form_url}"></iframe>`;
-    }
-
-    document.getElementById("content").innerHTML = html;
+  /* HEADER */
+  header {
+    text-align: center;
+    padding: 50px 20px 30px;
+    background: #000000;
+    color: white;
   }
 
-  function applyVisibility(labels) {
-    if (!labels.includes("parent")) {
-      document.getElementById("familyTile").style.display = "none";
-    }
-
-    if (!labels.includes("parent") && !labels.includes("student")) {
-      document.getElementById("paymentsTile").style.display = "none";
-    }
+  header h1 {
+    font-size: 22px;
+    letter-spacing: 2px;
+    margin: 0;
   }
 
-  init();
-</script>
+  header p {
+    font-size: 13px;
+    opacity: 0.7;
+    margin-top: 8px;
+  }
 
-</body>
-</html>
+  /* GRID */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    padding: 40px;
+    max-width: 1000px;
+    margin: auto;
+  }
+
+  /* TILE BASE */
+  .tile {
+    background: white;
+    border: 1px solid #e2decf;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+  }
+
+  .tile:hover {
+    transform: translateY(-4px);
+    border-color: #59a1aa;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+  }
+
+  /* TILE ACCENTS */
+  .tile.teal {
+    border-top: 4px solid #59a1aa;
+  }
+
+  .tile.olive {
+    border-top: 4px solid #a9a66e;
+  }
+
+  .tile.sand {
+    border-top: 4px solid #d6a380;
+  }
+
+  .tile.blue {
+    border-top: 4px solid #aed1db;
+  }
+
+  /* CONTENT */
+  #content {
+    max-width: 900px;
+    margin: 20px auto 60px;
+    padding: 40px;
+    background: white;
+    border: 1px solid #e2decf;
+    line-height: 1.7;
+  }
+
+  iframe {
+    border: none;
+    margin-top: 30px;
+    width: 100%;
+    height: 600px;
+  }
+
+  a {
+    color: #59a1aa;
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+</style>
