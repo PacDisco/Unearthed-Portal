@@ -41,7 +41,7 @@ export async function handler(event) {
 
   // 2. Get associated portal
   const assocRes = await fetch(
-    `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/YOUR_OBJECT_NAME`,
+    `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/2-58156993`,
     {
       headers: {
         Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`
