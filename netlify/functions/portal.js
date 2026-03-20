@@ -1,71 +1,145 @@
 export async function handler(event) {
-  const email = event.queryStringParameters.email;
+  try {
+    const email = event.queryStringParameters.email;
 
-  if (!email) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "Missing email" })
+    if (!email) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Missing email" })
+      };
+    }
+
+    const OBJECT = "2-58156993"; // your custom object ID
+
+    const headers = {
+      Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+      "Content-Type": "application/json"
     };
-  }
 
-  // 1. Find contact
-  const contactRes = await fetch(
-    "https://api.hubapi.com/crm/v3/objects/contacts/search",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [{
-            propertyName: "email",
-            operator: "EQ",
-            value: email
+    // -------------------------
+    // 1. Find contact
+    // -------------------------
+    const contactRes = await fetch(
+      "https://api.hubapi.com/crm/v3/objects/contacts/search",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          filterGroups: [{
+            filters: [{
+              propertyName: "email",
+              operator: "EQ",
+              value: email
+            }]
           }]
-        }]
-      })
+        })
+      }
+    );
+
+    if (!contactRes.ok) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: "Contact fetch failed",
+          details: await contactRes.text()
+        })
+      };
     }
-  );
 
-  const contactData = await contactRes.json();
-  const contactId = contactData.results?.[0]?.id;
+    const contactData = await contactRes.json();
+    const contactId = contactData.results?.[0]?.id;
 
-  if (!contactId) {
+    console.log("CONTACT ID:", contactId);
+
+    if (!contactId) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: "Contact not found" })
+      };
+    }
+
+    // -------------------------
+    // 2. Get associated portal
+    // -------------------------
+    const assocRes = await fetch(
+      `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/${OBJECT}`,
+      {
+        headers
+      }
+    );
+
+    if (!assocRes.ok) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: "Association fetch failed",
+          details: await assocRes.text()
+        })
+      };
+    }
+
+    const assocData = await assocRes.json();
+
+    console.log("ASSOCIATIONS:", JSON.stringify(assocData, null, 2));
+
+    if (!assocData.results || assocData.results.length === 0) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: "No portal association found" })
+      };
+    }
+
+    const portalId = assocData.results[0].toObjectId;
+
+    console.log("PORTAL ID:", portalId);
+
+    const labels =
+      assocData.results[0].associationTypes?.map(t => t.label) || [];
+
+    // -------------------------
+    // 3. Get portal content
+    // -------------------------
+    const portalRes = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url`,
+      {
+        headers
+      }
+    );
+
+    if (!portalRes.ok) {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: "Portal fetch failed",
+          details: await portalRes.text()
+        })
+      };
+    }
+
+    const portal = await portalRes.json();
+
+    console.log("PORTAL DATA:", JSON.stringify(portal, null, 2));
+
+    // -------------------------
+    // 4. Return data
+    // -------------------------
     return {
-      statusCode: 404,
-      body: JSON.stringify({ error: "Contact not found" })
+      statusCode: 200,
+      body: JSON.stringify({
+        ...portal.properties,
+        labels
+      })
+    };
+
+  } catch (err) {
+    console.error("ERROR:", err);
+
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: "Server error",
+        details: err.message
+      })
     };
   }
-
-  // 2. Get associated portal
-  const assocRes = await fetch(
-    `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/2-58156993`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`
-      }
-    }
-  );
-
-  const assocData = await assocRes.json();
-  const portalId = assocData.results?.[0]?.toObjectId;
-
-  // 3. Get portal content
-  const portalRes = await fetch(
-    `https://api.hubapi.com/crm/v3/objects/YOUR_OBJECT_NAME/${portalId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`
-      }
-    }
-  );
-
-  const portal = await portalRes.json();
-
-  return {
-    statusCode: 200,
-    body: JSON.stringify(portal.properties)
-  };
 }
