@@ -202,16 +202,28 @@
   }
 
   function applyVisibility(labels = []) {
-    console.log("LABELS:", labels);
+  console.log("LABELS:", labels);
 
-    if (!labels.includes("parent")) {
-      document.getElementById("familyTile").style.display = "none";
-    }
-
-    if (!labels.includes("parent") && !labels.includes("student")) {
-      document.getElementById("paymentsTile").style.display = "none";
-    }
+  // FAMILY
+  if (!labels.includes("parent")) {
+    document.getElementById("familyTile").style.display = "none";
   }
+
+  // PAYMENTS
+  if (!labels.includes("parent") && !labels.includes("student")) {
+    document.getElementById("paymentsTile").style.display = "none";
+  }
+
+  // TRIP LEADER
+  if (!labels.includes("trip_leader")) {
+    document.getElementById("tripLeaderTile").style.display = "none";
+  }
+
+  // TEACHER
+  if (!labels.includes("teacher")) {
+    document.getElementById("teacherTile").style.display = "none";
+  }
+}
 
   init();
 </script>
