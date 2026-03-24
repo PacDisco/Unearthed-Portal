@@ -2,21 +2,20 @@
 <html>
 <head>
   <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#2d6b74">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Unearthed">
+  <meta name="theme-color" content="#2d6b74">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Unearthed">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="apple-touch-icon" href="/icon-192.png">
-
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<link rel="shortcut icon" href="/favicon.ico" />
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-<meta name="apple-mobile-web-app-title" content="Unearthed Education" />
-<link rel="manifest" href="/site.webmanifest" />
-  
-  <title>Unearthed Eduaction Portal</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Unearthed Education" />
+  <link rel="manifest" href="/site.webmanifest" />
+
+  <title>Unearthed Education Portal</title>
 
   <!-- FONT -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -32,9 +31,17 @@
     /* HEADER */
     header {
       text-align: center;
-      padding: 50px 20px 30px;
+      padding: 30px 20px 24px;
       background: #2d6b74;
       color: white;
+    }
+
+    header img {
+      height: 40px;
+      margin-bottom: 16px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     header h1 {
@@ -59,33 +66,6 @@
       margin: auto;
     }
 
-    /* MOBILE */
-    @media (max-width: 768px) {
-      .grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
-        padding: 16px;
-      }
-
-      .tile {
-        padding: 28px 12px;
-        font-size: 11px;
-        letter-spacing: 1px;
-      }
-
-      #content {
-        margin: 8px 12px 40px;
-        padding: 20px;
-      }
-
-      header {
-        padding: 30px 20px 20px;
-      }
-
-      header h1 {
-        font-size: 18px;
-      }
-    }
     /* TILE */
     .tile {
       background: white;
@@ -141,18 +121,18 @@
 
     /* PORTAL BUTTONS */
     .portal-btn {
-  display: inline-block !important;
-  margin: 8px 8px 8px 0;
-  padding: 16px 32px !important;
-  border-radius: 6px;
-  color: white !important;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none !important;
-  letter-spacing: 0.5px;
-  transition: opacity 0.2s ease;
-  cursor: pointer;
-}
+      display: inline-block !important;
+      margin: 8px 8px 8px 0;
+      padding: 16px 32px !important;
+      border-radius: 6px;
+      color: white !important;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none !important;
+      letter-spacing: 0.5px;
+      transition: opacity 0.2s ease;
+      cursor: pointer;
+    }
 
     .portal-btn:hover {
       opacity: 0.85;
@@ -160,13 +140,30 @@
     }
 
     /* MOBILE */
-    @media (max-width: 600px) {
+    @media (max-width: 768px) {
       .grid {
-        padding: 20px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        padding: 16px;
+      }
+
+      .tile {
+        padding: 28px 12px;
+        font-size: 11px;
+        letter-spacing: 1px;
       }
 
       #content {
-        padding: 25px;
+        margin: 8px 12px 40px;
+        padding: 20px;
+      }
+
+      header {
+        padding: 24px 20px 20px;
+      }
+
+      header h1 {
+        font-size: 18px;
       }
     }
   </style>
@@ -175,6 +172,7 @@
 <body>
 
 <header>
+  <img src="https://unearthededucation.org/cdn/shop/files/Logo-Landscape-WHite.webp?v=1742792989&width=140" alt="Unearthed Education">
   <h1 id="title">UNEARTHED</h1>
   <p>STUDENT PORTAL</p>
 </header>
@@ -282,15 +280,15 @@
     });
   }
 
- function applyVisibility(labels = []) {
+  function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
 
-    // FAMILY - show for parent and student
+    // FAMILY - show for Parent and Student
     if (!labels.includes("Parent") && !labels.includes("Student")) {
       document.getElementById("familyTile").style.display = "none";
     }
 
-    // PAYMENTS - show for parent and student
+    // PAYMENTS - show for Parent and Student
     if (!labels.includes("Parent") && !labels.includes("Student")) {
       document.getElementById("paymentsTile").style.display = "none";
     }
@@ -305,12 +303,12 @@
       document.getElementById("teacherTile").style.display = "none";
     }
   }
-  
+
   init();
-  
+
   if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/service-worker.js");
-}
+    navigator.serviceWorker.register("/service-worker.js");
+  }
 </script>
 
 </body>
