@@ -305,6 +305,11 @@
     }
   }
 
+  function logout() {
+    sessionStorage.removeItem("portalEmail");
+    window.location.href = "/login.html";
+  }
+
   init();
 
   if ("serviceWorker" in navigator) {
