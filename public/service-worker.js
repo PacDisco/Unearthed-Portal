@@ -1,7 +1,7 @@
 self.addEventListener("install", e => {
   e.waitUntil(
     caches.open("unearthed-v1").then(cache => {
-      return cache.addAll(["/portal.html", "/manifest.json"]);
+      return cache.addAll(["/index.html", "/site.manifest"]);
     })
   );
 });
