@@ -285,19 +285,19 @@
   function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
 
-    if (!labels.includes("parent")) {
+    if (!labels.includes("Parent")) {
       document.getElementById("familyTile").style.display = "none";
     }
 
-    if (!labels.includes("parent") && !labels.includes("student")) {
+    if (!labels.includes("Parent") && !labels.includes("student")) {
       document.getElementById("paymentsTile").style.display = "none";
     }
 
-    if (!labels.includes("trip_leader")) {
+    if (!labels.includes("Trip_Leader")) {
       document.getElementById("tripLeaderTile").style.display = "none";
     }
 
-    if (!labels.includes("teacher")) {
+    if (!labels.includes("Teacher")) {
       document.getElementById("teacherTile").style.display = "none";
     }
   }
