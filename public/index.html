@@ -279,6 +279,13 @@
       } else {
         link.style.background = colors[(index - 1) % colors.length];
       }
+      
+       // Append email to link if it has a URL
+      if (link.href && email) {
+        const url = new URL(link.href);
+        url.searchParams.set("email", email);
+        link.href = url.toString();
+      }
     });
   }
 
