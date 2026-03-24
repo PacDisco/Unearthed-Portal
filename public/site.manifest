@@ -1,7 +1,7 @@
 {
   "name": "Unearthed Portal",
   "short_name": "Unearthed",
-  "start_url": "/portal.html",
+  "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#f9f8f2",
   "theme_color": "#2d6b74",
