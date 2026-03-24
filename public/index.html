@@ -30,6 +30,7 @@
 
     /* HEADER */
     header {
+      position: relative;
       text-align: center;
       padding: 30px 20px 24px;
       background: #2d6b74;
@@ -217,8 +218,8 @@
 <div id="content">Loading...</div>
 
 <script>
-  const params = new URLSearchParams(window.location.search);
-  const email = params.get("email");
+  const email = sessionStorage.getItem("portalEmail");
+  if (!email) window.location.href = "/login.html";
 
   let portalData = {};
 
