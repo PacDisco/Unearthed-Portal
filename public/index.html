@@ -55,6 +55,7 @@
       font-size: 13px;
       opacity: 0.7;
       margin-top: 8px;
+      margin-bottom: 0;
     }
 
     /* GRID */
@@ -71,6 +72,7 @@
     .tile {
       background: white;
       border: 1px solid #e2decf;
+      border-top: 4px solid #e2decf;
       padding: 40px 20px;
       text-align: center;
       cursor: pointer;
@@ -82,15 +84,20 @@
 
     .tile:hover {
       transform: translateY(-4px);
-      border-color: #59a1aa;
       box-shadow: 0 8px 20px rgba(0,0,0,0.05);
     }
 
-    /* TILE ACCENTS */
-    .tile.teal { border-top: 4px solid #59a1aa; }
-    .tile.blue { border-top: 4px solid #aed1db; }
-    .tile.olive { border-top: 4px solid #a9a66e; }
-    .tile.sand { border-top: 4px solid #d6a380; }
+    /* TILE ACCENT COLORS */
+    .tile.active-teal  { border-top: 4px solid #59a1aa; }
+    .tile.active-blue  { border-top: 4px solid #aed1db; }
+    .tile.active-olive { border-top: 4px solid #a9a66e; }
+    .tile.active-sand  { border-top: 4px solid #d6a380; }
+
+    /* ACTIVE TILE */
+    .tile.active {
+      border-top-width: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
 
     /* CONTENT */
     #content {
@@ -173,44 +180,48 @@
 <body>
 
 <header>
-  <img src="/Logo-Landscape-Beige.png?v=1742792989&width=200" alt="Unearthed Education">
+  <img src="/Logo-Landscape-Beige.png" alt="Unearthed Education">
   <h1 id="title">UNEARTHED</h1>
   <p>STUDENT PORTAL</p>
-  <button onclick="logout()" style="position:absolute; right:20px; top:20px; background:transparent; border:1px solid rgba(255,255,255,0.4); color:white; padding:6px 14px; font-size:11px; letter-spacing:1px; cursor:pointer;">LOGOUT</button>
+  <button onclick="logout()" style="position:absolute; right:20px; top:20px; background:transparent; border:1px solid rgba(255,255,255,0.4); color:white; padding:6px 14px; font-size:11px; letter-spacing:1px; cursor:pointer; font-family:'Inter',sans-serif;">LOGOUT</button>
 </header>
 
 <div class="grid">
 
-  <div class="tile teal" onclick="loadSection('trip_information_content')">
+  <div class="tile" onclick="loadSection('trip_information_content')">
     TRIP INFORMATION
   </div>
 
-  <div class="tile blue" onclick="loadSection('destination_overview_content')">
+  <div class="tile" onclick="loadSection('destination_overview_content')">
     DESTINATION OVERVIEW
   </div>
 
-  <div class="tile olive" onclick="loadSection('travel_information_content')">
+  <div class="tile" onclick="loadSection('travel_information_content')">
     TRAVEL INFORMATION
   </div>
 
-  <div class="tile sand" onclick="loadSection('general_information_content')">
+  <div class="tile" onclick="loadSection('general_information_content')">
     GENERAL INFORMATION
   </div>
 
-  <div id="familyTile" class="tile olive" onclick="loadSection('family_information_content')">
+  <div id="familyTile" class="tile" onclick="loadSection('family_information_content')">
     FAMILY AREA
   </div>
 
-  <div id="paymentsTile" class="tile sand" onclick="loadSection('payments_information_content')">
+  <div id="paymentsTile" class="tile" onclick="loadSection('payments_information_content')">
     PAYMENTS
   </div>
 
-  <div id="tripLeaderTile" class="tile teal" onclick="loadSection('trip_leader_information_content')">
+  <div id="tripLeaderTile" class="tile" onclick="loadSection('trip_leader_information_content')">
     TRIP LEADER
   </div>
 
-  <div id="teacherTile" class="tile blue" onclick="loadSection('teacher_information_content')">
+  <div id="teacherTile" class="tile" onclick="loadSection('teacher_information_content')">
     TEACHER
+  </div>
+
+  <div id="faqsTile" class="tile" onclick="loadSection('faqs')">
+    FAQs
   </div>
 
 </div>
@@ -222,6 +233,8 @@
   if (!email) window.location.href = "/login.html";
 
   let portalData = {};
+
+  const tileColors = ["active-teal", "active-blue", "active-olive", "active-sand"];
 
   async function init() {
     try {
@@ -241,6 +254,7 @@
         portalData.portal_title || "UNEARTHED";
 
       applyVisibility(portalData.labels);
+      assignTileColors();
 
       loadSection("trip_information_content");
 
@@ -249,9 +263,31 @@
     }
   }
 
-  function loadSection(field) {
-    const content = document.getElementById("content");
+  function assignTileColors() {
+    const tiles = document.querySelectorAll(".tile");
+    tiles.forEach((tile, index) => {
+      tile.classList.add(tileColors[index % tileColors.length]);
+    });
+  }
 
+  function setActiveTile(field) {
+    const tiles = document.querySelectorAll(".tile");
+    tiles.forEach(tile => {
+      tile.classList.remove("active");
+    });
+
+    const clicked = [...tiles].find(t =>
+      t.getAttribute("onclick")?.includes(field)
+    );
+    if (clicked) {
+      clicked.classList.add("active");
+    }
+  }
+
+  function loadSection(field) {
+    setActiveTile(field);
+
+    const content = document.getElementById("content");
     content.style.opacity = 0;
 
     setTimeout(() => {
@@ -279,12 +315,13 @@
       } else {
         link.style.background = colors[(index - 1) % colors.length];
       }
-      
-       // Append email to link if it has a URL
+
       if (link.href && email) {
-        const url = new URL(link.href);
-        url.searchParams.set("email", email);
-        link.href = url.toString();
+        try {
+          const url = new URL(link.href);
+          url.searchParams.set("email", email);
+          link.href = url.toString();
+        } catch(e) {}
       }
     });
   }
