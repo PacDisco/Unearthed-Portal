@@ -9,7 +9,6 @@ export async function handler(event) {
       };
     }
 
-    // Look up contact in HubSpot
     const contactRes = await fetch(
       "https://api.hubapi.com/crm/v3/objects/contacts/search",
       {
@@ -43,7 +42,14 @@ export async function handler(event) {
 
     const storedPassword = contact.properties?.portal_password;
 
-    if (!storedPassword || storedPassword !== password) {
+    if (!storedPassword) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ success: false, error: "no_password" })
+      };
+    }
+
+    if (storedPassword !== password) {
       return {
         statusCode: 200,
         body: JSON.stringify({ success: false, error: "Incorrect password" })
