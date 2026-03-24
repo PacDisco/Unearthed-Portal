@@ -282,26 +282,30 @@
     });
   }
 
-  function applyVisibility(labels = []) {
+ function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
 
+    // FAMILY - show for parent only
     if (!labels.includes("Parent")) {
       document.getElementById("familyTile").style.display = "none";
     }
 
+    // PAYMENTS - show for parent and student
     if (!labels.includes("Parent") && !labels.includes("Student")) {
       document.getElementById("paymentsTile").style.display = "none";
     }
 
+    // TRIP LEADER
     if (!labels.includes("Trip_Leader")) {
       document.getElementById("tripLeaderTile").style.display = "none";
     }
 
+    // TEACHER
     if (!labels.includes("Teacher")) {
       document.getElementById("teacherTile").style.display = "none";
     }
   }
-
+  
   init();
   
   if ("serviceWorker" in navigator) {
