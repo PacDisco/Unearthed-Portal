@@ -234,7 +234,7 @@
 
   let portalData = {};
 
-  const tileColors = ["active-teal", "active-blue", "active-olive", "active-sand"];
+  const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-blue", "active-teal"];
 
   async function init() {
     try {
@@ -266,7 +266,8 @@
   function assignTileColors() {
     const tiles = document.querySelectorAll(".tile");
     tiles.forEach((tile, index) => {
-      tile.classList.add(tileColors[index % tileColors.length]);
+      tileColors.forEach(c => tile.classList.remove(c));
+      tile.classList.add(tileColors[index]);
     });
   }
 
