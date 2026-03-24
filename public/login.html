@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unearthed Portal — Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+  <meta name="theme-color" content="#2d6b74">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: #f9f8f2;
+      color: #231f20;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      text-align: center;
+      padding: 30px 20px 24px;
+      background: #2d6b74;
+      color: white;
+    }
+
+    header img {
+      height: 40px;
+      display: block;
+      margin: 0 auto 16px;
+    }
+
+    header p {
+      font-size: 13px;
+      opacity: 0.7;
+      margin: 0;
+      letter-spacing: 2px;
+    }
+
+    .login-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .login-box {
+      background: white;
+      border: 1px solid #e2decf;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .login-box h2 {
+      margin: 0 0 24px;
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: 1px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #666;
+    }
+
+    input {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      border: 1px solid #e2decf;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      background: #f9f8f2;
+      color: #231f20;
+      box-sizing: border-box;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #59a1aa;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #2d6b74;
+      color: white;
+      border: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    button:hover {
+      opacity: 0.85;
+    }
+
+    .error {
+      color: #c0392b;
+      font-size: 13px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    @media (max-width: 480px) {
+      .login-box {
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <img src="https://unearthededucation.org/cdn/shop/files/Logo-Landscape-WHite.webp?v=1742792989&width=140" alt="Unearthed Education">
+  <p>STUDENT PORTAL</p>
+</header>
+
+<div class="login-wrap">
+  <div class="login-box">
+    <h2>SIGN IN</h2>
+
+    <label>EMAIL</label>
+    <input type="email" id="email" placeholder="your@email.com" />
+
+    <label>PASSWORD</label>
+    <input type="password" id="password" placeholder="••••••••" />
+
+    <button onclick="login()">SIGN IN</button>
+
+    <p class="error" id="error">Incorrect email or password. Please try again.</p>
+  </div>
+</div>
+
+<script>
+  // Check if already logged in
+  const savedEmail = sessionStorage.getItem("portalEmail");
+  if (savedEmail) {
+    window.location.href = "/index.html";
+  }
+
+  function login() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const error = document.getElementById("error");
+
+    if (!email || !password) {
+      error.style.display = "block";
+      error.textContent = "Please enter your email and password.";
+      return;
+    }
+
+    // Validate via Netlify function
+    fetch(`/.netlify/functions/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        sessionStorage.setItem("portalEmail", email);
+        window.location.href = "/index.html";
+      } else {
+        error.style.display = "block";
+        error.textContent = data.error || "Incorrect email or password.";
+      }
+    })
+    .catch(() => {
+      error.style.display = "block";
+      error.textContent = "Something went wrong. Please try again.";
+    });
+  }
+
+  // Allow enter key to submit
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter") login();
+  });
+</script>
+
+</body>
+</html>
