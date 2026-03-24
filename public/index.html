@@ -285,8 +285,8 @@
  function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
 
-    // FAMILY - show for parent only
-    if (!labels.includes("Parent")) {
+    // FAMILY - show for parent and student
+    if (!labels.includes("Parent") && !labels.includes("Student")) {
       document.getElementById("familyTile").style.display = "none";
     }
 
