@@ -14,6 +14,12 @@ export async function handler(event) {
       "Content-Type": "application/json"
     };
 
+    // Manual overrides for paired labels where HubSpot returns null
+    // Add new paired labels here as needed: typeId -> label name
+    const pairedLabelOverrides = {
+      28: "Trip Leader"
+    };
+
     // 1. Find contact
     const contactRes = await fetch(
       "https://api.hubapi.com/crm/v3/objects/contacts/search",
@@ -90,7 +96,7 @@ export async function handler(event) {
       .flatMap(r => r.associationTypes || [])
       .map(t => t.typeId);
 
-    // Fetch label definitions to resolve paired labels
+    // Fetch label definitions
     const labelDefsRes = await fetch(
       `https://api.hubapi.com/crm/v4/associations/contacts/${OBJECT}/labels`,
       { headers }
@@ -100,10 +106,12 @@ export async function handler(event) {
 
     console.log("LABEL DEFS:", JSON.stringify(labelDefs, null, 2));
 
-    // Match typeIds to label definitions, filtering out nulls
+    // Match typeIds to label definitions
+    // Use override map for paired labels where HubSpot returns null
     const labels = (labelDefs.results || [])
-      .filter(def => typeIds.includes(def.typeId) && def.label)
-      .map(def => def.label);
+      .filter(def => typeIds.includes(def.typeId))
+      .map(def => pairedLabelOverrides[def.typeId] || def.label)
+      .filter(l => l && l !== "Program");
 
     console.log("LABELS EXTRACTED:", labels);
 
