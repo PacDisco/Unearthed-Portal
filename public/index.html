@@ -186,11 +186,11 @@
   <button onclick="logout()" style="position:absolute; right:20px; top:20px; background:transparent; border:1px solid rgba(255,255,255,0.4); color:white; padding:6px 14px; font-size:11px; letter-spacing:1px; cursor:pointer; font-family:'Inter',sans-serif;">LOGOUT</button>
 </header>
 
-<div id="installBanner" style="display:none; background:#2d6b74; color:white; padding:12px 20px; text-align:center; font-size:12px; letter-spacing:1px; position:relative;">
+<div id="installBanner" style="display:none; background:#1e5a62; color:white; padding:12px 60px 12px 20px; text-align:center; font-size:12px; letter-spacing:1px; position:relative;">
   <span id="installText"></span>
   <button onclick="dismissBanner()" style="position:absolute; right:16px; top:50%; transform:translateY(-50%); background:transparent; border:none; color:white; font-size:16px; cursor:pointer;">✕</button>
 </div>
-  
+
 <div class="grid">
 
   <div class="tile" onclick="loadSection('trip_information_content')">
@@ -260,8 +260,8 @@
 
       applyVisibility(portalData.labels);
       assignTileColors();
-
       loadSection("trip_information_content");
+      showInstallPrompt();
 
     } catch (err) {
       document.body.innerHTML = `<h1>Error loading portal</h1>`;
@@ -278,16 +278,12 @@
 
   function setActiveTile(field) {
     const tiles = document.querySelectorAll(".tile");
-    tiles.forEach(tile => {
-      tile.classList.remove("active");
-    });
+    tiles.forEach(tile => tile.classList.remove("active"));
 
     const clicked = [...tiles].find(t =>
       t.getAttribute("onclick")?.includes(field)
     );
-    if (clicked) {
-      clicked.classList.add("active");
-    }
+    if (clicked) clicked.classList.add("active");
   }
 
   function loadSection(field) {
@@ -335,22 +331,18 @@
   function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
 
-    // FAMILY - show for Parent and Student
     if (!labels.includes("Parent") && !labels.includes("Student")) {
       document.getElementById("familyTile").style.display = "none";
     }
 
-    // PAYMENTS - show for Parent and Student
     if (!labels.includes("Parent") && !labels.includes("Student")) {
       document.getElementById("paymentsTile").style.display = "none";
     }
 
-    // TRIP LEADER
     if (!labels.includes("Trip_Leader")) {
       document.getElementById("tripLeaderTile").style.display = "none";
     }
 
-    // TEACHER
     if (!labels.includes("Teacher")) {
       document.getElementById("teacherTile").style.display = "none";
     }
@@ -361,7 +353,7 @@
     window.location.href = "/login.html";
   }
 
-function showInstallPrompt() {
+  function showInstallPrompt() {
     const banner = document.getElementById("installBanner");
     const text = document.getElementById("installText");
     const dismissed = sessionStorage.getItem("installDismissed");
@@ -372,7 +364,7 @@ function showInstallPrompt() {
     const isAndroid = /android/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
 
-    if (isStandalone) return; // already installed
+    if (isStandalone) return;
 
     if (isIOS) {
       text.textContent = "Add to your home screen — tap the share button then 'Add to Home Screen'";
@@ -387,32 +379,11 @@ function showInstallPrompt() {
     document.getElementById("installBanner").style.display = "none";
     sessionStorage.setItem("installDismissed", "true");
   }
-  
- async function init() {
-    try {
-      const res = await fetch(`/.netlify/functions/portal?email=${email}`);
-      const data = await res.json();
 
-      console.log("PORTAL DATA:", data);
+  init();
 
-      if (data.error) {
-        document.body.innerHTML = `<h1>${data.error}</h1>`;
-        return;
-      }
-
-      portalData = data;
-
-      document.getElementById("title").innerText =
-        portalData.portal_title || "UNEARTHED";
-
-      applyVisibility(portalData.labels);
-      assignTileColors();
-      loadSection("trip_information_content");
-      showInstallPrompt(); // 👈 add at the end
-
-    } catch (err) {
-      document.body.innerHTML = `<h1>Error loading portal</h1>`;
-    }
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/service-worker.js");
   }
 </script>
 
