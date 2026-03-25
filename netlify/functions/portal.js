@@ -110,7 +110,8 @@ family_information_content,
 payments_information_content,
 payments_form_url,
 trip_leader_information_content,
-teacher_information_content`,
+teacher_information_content,
+faqs`,
       {
         headers
       }
