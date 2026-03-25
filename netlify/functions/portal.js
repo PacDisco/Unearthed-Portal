@@ -1,7 +1,6 @@
 export async function handler(event) {
   try {
     const email = event.queryStringParameters.email;
-
     if (!email) {
       return {
         statusCode: 400,
@@ -9,16 +8,13 @@ export async function handler(event) {
       };
     }
 
-    const OBJECT = "2-58156993"; // your custom object ID
-
+    const OBJECT = "2-58156993";
     const headers = {
       Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
       "Content-Type": "application/json"
     };
 
-    // -------------------------
     // 1. Find contact
-    // -------------------------
     const contactRes = await fetch(
       "https://api.hubapi.com/crm/v3/objects/contacts/search",
       {
@@ -58,14 +54,10 @@ export async function handler(event) {
       };
     }
 
-    // -------------------------
     // 2. Get associated portal
-    // -------------------------
     const assocRes = await fetch(
       `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/${OBJECT}`,
-      {
-        headers
-      }
+      { headers }
     );
 
     if (!assocRes.ok) {
@@ -93,28 +85,19 @@ export async function handler(event) {
 
     console.log("PORTAL ID:", portalId);
 
-    const labels =
-      assocData.results[0].associationTypes?.map(t => t.label) || [];
+    // Fix: extract labels properly from all results
+    // filtering out nulls and generic category names like "Program"
+    const labels = assocData.results
+      .flatMap(r => r.associationTypes || [])
+      .map(t => t.label)
+      .filter(l => l && l !== "Program");
 
-    // -------------------------
+    console.log("LABELS EXTRACTED:", labels);
+
     // 3. Get portal content
-    // -------------------------
     const portalRes = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=
-portal_title,
-trip_information_content,
-destination_overview_content,
-travel_information_content,
-general_information_content,
-family_information_content,
-payments_information_content,
-payments_form_url,
-trip_leader_information_content,
-teacher_information_content,
-faqs`,
-      {
-        headers
-      }
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,trip_leader_information_content,teacher_information_content,faqs`,
+      { headers }
     );
 
     if (!portalRes.ok) {
@@ -131,9 +114,7 @@ faqs`,
 
     console.log("PORTAL DATA:", JSON.stringify(portal, null, 2));
 
-    // -------------------------
     // 4. Return data
-    // -------------------------
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -144,7 +125,6 @@ faqs`,
 
   } catch (err) {
     console.error("ERROR:", err);
-
     return {
       statusCode: 500,
       body: JSON.stringify({
