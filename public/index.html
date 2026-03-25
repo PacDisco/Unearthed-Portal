@@ -388,10 +388,31 @@ function showInstallPrompt() {
     sessionStorage.setItem("installDismissed", "true");
   }
   
-  init();
+ async function init() {
+    try {
+      const res = await fetch(`/.netlify/functions/portal?email=${email}`);
+      const data = await res.json();
 
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/service-worker.js");
+      console.log("PORTAL DATA:", data);
+
+      if (data.error) {
+        document.body.innerHTML = `<h1>${data.error}</h1>`;
+        return;
+      }
+
+      portalData = data;
+
+      document.getElementById("title").innerText =
+        portalData.portal_title || "UNEARTHED";
+
+      applyVisibility(portalData.labels);
+      assignTileColors();
+      loadSection("trip_information_content");
+      showInstallPrompt(); // 👈 add at the end
+
+    } catch (err) {
+      document.body.innerHTML = `<h1>Error loading portal</h1>`;
+    }
   }
 </script>
 
