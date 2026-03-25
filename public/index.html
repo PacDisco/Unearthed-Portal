@@ -102,7 +102,7 @@
     /* CONTENT */
     #content {
       max-width: 900px;
-      margin: 20px auto 60px;
+      margin: 20px auto 100px;
       padding: 40px;
       background: white;
       border: 1px solid #e2decf;
@@ -147,6 +147,72 @@
       text-decoration: none !important;
     }
 
+    /* INSTALL SHEET */
+    #installSheet {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-top: 3px solid #59a1aa;
+      padding: 24px 24px 36px;
+      box-shadow: 0 -8px 30px rgba(0,0,0,0.12);
+      z-index: 1000;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+    }
+
+    #installSheet.visible {
+      transform: translateY(0);
+    }
+
+    #installSheet h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+
+    #installSheet p {
+      margin: 0 0 20px;
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    #installSheet .sheet-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    #installSheet .sheet-btn {
+      flex: 1;
+      padding: 14px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s ease;
+    }
+
+    #installSheet .sheet-btn:hover { opacity: 0.85; }
+
+    #installSheet .sheet-btn.primary {
+      background: #2d6b74;
+      color: white;
+    }
+
+    #installSheet .sheet-btn.ghost {
+      background: transparent;
+      color: #999;
+      border: 1px solid #e2decf;
+      flex: 0 0 auto;
+      padding: 14px 20px;
+    }
+
     /* MOBILE */
     @media (max-width: 768px) {
       .grid {
@@ -162,12 +228,12 @@
       }
 
       #content {
-        margin: 8px 12px 40px;
+        margin: 8px 12px 100px;
         padding: 20px;
       }
 
       header {
-        padding: 24px 20px 20px;
+        padding: 70px 20px 20px;
       }
 
       header h1 {
@@ -185,11 +251,6 @@
   <p>STUDENT PORTAL</p>
   <button onclick="logout()" style="position:absolute; right:20px; top:20px; background:transparent; border:1px solid rgba(255,255,255,0.4); color:white; padding:6px 14px; font-size:11px; letter-spacing:1px; cursor:pointer; font-family:'Inter',sans-serif;">LOGOUT</button>
 </header>
-
-<div id="installBanner" style="display:none; background:#1e5a62; color:white; padding:12px 60px 12px 20px; text-align:center; font-size:12px; letter-spacing:1px; position:relative;">
-  <span id="installText"></span>
-  <button onclick="dismissBanner()" style="position:absolute; right:16px; top:50%; transform:translateY(-50%); background:transparent; border:none; color:white; font-size:16px; cursor:pointer;">✕</button>
-</div>
 
 <div class="grid">
 
@@ -232,6 +293,15 @@
 </div>
 
 <div id="content">Loading...</div>
+
+<div id="installSheet">
+  <h3>ADD TO HOME SCREEN</h3>
+  <p id="installSheetText"></p>
+  <div class="sheet-actions">
+    <button class="sheet-btn primary" onclick="dismissSheet()">GOT IT</button>
+    <button class="sheet-btn ghost" onclick="dismissSheet()">NOT NOW</button>
+  </div>
+</div>
 
 <script>
   const email = sessionStorage.getItem("portalEmail");
@@ -364,8 +434,8 @@
   }
 
   function showInstallPrompt() {
-    const banner = document.getElementById("installBanner");
-    const text = document.getElementById("installText");
+    const sheet = document.getElementById("installSheet");
+    const text = document.getElementById("installSheetText");
     const dismissed = sessionStorage.getItem("installDismissed");
 
     if (dismissed) return;
@@ -377,16 +447,21 @@
     if (isStandalone) return;
 
     if (isIOS) {
-      text.textContent = "Add to your home screen — tap the share button then 'Add to Home Screen'";
-      banner.style.display = "block";
+      text.textContent = "Tap the share button at the bottom of your browser, then tap 'Add to Home Screen' to install the Unearthed portal as an app.";
     } else if (isAndroid) {
-      text.textContent = "Add to your home screen — tap the menu then 'Add to Home Screen'";
-      banner.style.display = "block";
+      text.textContent = "Tap the menu button in your browser, then tap 'Add to Home Screen' to install the Unearthed portal as an app.";
+    } else {
+      return;
     }
+
+    sheet.style.display = "block";
+    setTimeout(() => sheet.classList.add("visible"), 50);
   }
 
-  function dismissBanner() {
-    document.getElementById("installBanner").style.display = "none";
+  function dismissSheet() {
+    const sheet = document.getElementById("installSheet");
+    sheet.classList.remove("visible");
+    setTimeout(() => sheet.style.display = "none", 300);
     sessionStorage.setItem("installDismissed", "true");
   }
 
