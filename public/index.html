@@ -241,12 +241,18 @@
 
   const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-sand", "active-blue"];
 
-  async function init() {
+  async function init(retries = 3) {
     try {
       const res = await fetch(`/.netlify/functions/portal?email=${email}`);
       const data = await res.json();
 
       console.log("PORTAL DATA:", data);
+
+      if (data.error === "Contact not found" && retries > 0) {
+        console.log(`Retrying... ${retries} attempts left`);
+        setTimeout(() => init(retries - 1), 500);
+        return;
+      }
 
       if (data.error) {
         document.body.innerHTML = `<h1>${data.error}</h1>`;
@@ -264,7 +270,11 @@
       showInstallPrompt();
 
     } catch (err) {
-      document.body.innerHTML = `<h1>Error loading portal</h1>`;
+      if (retries > 0) {
+        setTimeout(() => init(retries - 1), 500);
+      } else {
+        document.body.innerHTML = `<h1>Error loading portal</h1>`;
+      }
     }
   }
 
