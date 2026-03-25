@@ -72,6 +72,8 @@ export async function handler(event) {
 
     const assocData = await assocRes.json();
 
+    console.log("RAW ASSOC RESULTS:", JSON.stringify(assocData.results, null, 2));
+
     console.log("ASSOCIATIONS:", JSON.stringify(assocData, null, 2));
 
     if (!assocData.results || assocData.results.length === 0) {
