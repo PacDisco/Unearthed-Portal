@@ -74,8 +74,6 @@ export async function handler(event) {
 
     console.log("RAW ASSOC RESULTS:", JSON.stringify(assocData.results, null, 2));
 
-    console.log("ASSOCIATIONS:", JSON.stringify(assocData, null, 2));
-
     if (!assocData.results || assocData.results.length === 0) {
       return {
         statusCode: 404,
@@ -87,12 +85,25 @@ export async function handler(event) {
 
     console.log("PORTAL ID:", portalId);
 
-    // Fix: extract labels properly from all results
-    // filtering out nulls and generic category names like "Program"
-    const labels = assocData.results
+    // Get typeIds from this association
+    const typeIds = assocData.results
       .flatMap(r => r.associationTypes || [])
-      .map(t => t.label)
-      .filter(l => l && l !== "Program");
+      .map(t => t.typeId);
+
+    // Fetch label definitions to resolve paired labels
+    const labelDefsRes = await fetch(
+      `https://api.hubapi.com/crm/v4/associations/contacts/${OBJECT}/labels`,
+      { headers }
+    );
+
+    const labelDefs = await labelDefsRes.json();
+
+    console.log("LABEL DEFS:", JSON.stringify(labelDefs, null, 2));
+
+    // Match typeIds to label definitions, filtering out nulls
+    const labels = (labelDefs.results || [])
+      .filter(def => typeIds.includes(def.typeId) && def.label)
+      .map(def => def.label);
 
     console.log("LABELS EXTRACTED:", labels);
 
