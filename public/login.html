@@ -184,9 +184,11 @@
   }
 
   async function login() {
-    const email = document.getElementById("email").value.trim();
+    const email = document.getElementById("email").value.toLowerCase().trim();
     const password = document.getElementById("password").value.trim();
     const error = document.getElementById("loginError");
+
+    error.style.display = "none";
 
     if (!email || !password) {
       error.style.display = "block";
@@ -194,28 +196,35 @@
       return;
     }
 
-    const res = await fetch("/.netlify/functions/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
+    try {
+      const res = await fetch("/.netlify/functions/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (data.success) {
-      sessionStorage.setItem("portalEmail", email);
-      window.location.href = "/index.html";
-    } else if (data.error === "no_password") {
+      if (data.success) {
+        sessionStorage.setItem("portalEmail", data.email || email);
+        setTimeout(() => {
+          window.location.href = "/index.html";
+        }, 100);
+      } else if (data.error === "no_password") {
+        error.style.display = "block";
+        error.textContent = "No password set yet. Use the magic link to set one.";
+      } else {
+        error.style.display = "block";
+        error.textContent = data.error || "Incorrect email or password.";
+      }
+    } catch (err) {
       error.style.display = "block";
-      error.textContent = "No password set yet. Use the magic link to set one.";
-    } else {
-      error.style.display = "block";
-      error.textContent = data.error || "Incorrect email or password.";
+      error.textContent = "Something went wrong. Please try again.";
     }
   }
 
   async function sendMagicLink() {
-    const email = document.getElementById("magicEmail").value.trim();
+    const email = document.getElementById("magicEmail").value.toLowerCase().trim();
     const msg = document.getElementById("magicMessage");
 
     if (!email) {
@@ -225,22 +234,28 @@
       return;
     }
 
-    const res = await fetch("/.netlify/functions/send-magic-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
-    });
+    try {
+      const res = await fetch("/.netlify/functions/send-magic-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (data.success) {
-      msg.className = "message success";
-      msg.style.display = "block";
-      msg.textContent = "Link sent! Check your email.";
-    } else {
+      if (data.success) {
+        msg.className = "message success";
+        msg.style.display = "block";
+        msg.textContent = "Link sent! Check your email.";
+      } else {
+        msg.className = "message error";
+        msg.style.display = "block";
+        msg.textContent = data.error || "Something went wrong.";
+      }
+    } catch (err) {
       msg.className = "message error";
       msg.style.display = "block";
-      msg.textContent = data.error || "Something went wrong.";
+      msg.textContent = "Something went wrong. Please try again.";
     }
   }
 
