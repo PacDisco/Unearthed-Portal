@@ -9,6 +9,8 @@ export async function handler(event) {
       };
     }
 
+    const cleanEmail = email.toLowerCase().trim();
+
     const contactRes = await fetch(
       "https://api.hubapi.com/crm/v3/objects/contacts/search",
       {
@@ -22,7 +24,7 @@ export async function handler(event) {
             filters: [{
               propertyName: "email",
               operator: "EQ",
-              value: email
+              value: cleanEmail
             }]
           }],
           properties: ["email", "portal_password"]
@@ -58,7 +60,7 @@ export async function handler(event) {
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true })
+      body: JSON.stringify({ success: true, email: cleanEmail })
     };
 
   } catch (err) {
