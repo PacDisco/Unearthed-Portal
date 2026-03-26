@@ -117,7 +117,7 @@ export async function handler(event) {
 
     // 3. Get portal content
     const portalRes = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id`,
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id,itinerary,initial_planning_meeting,initial_planning_meeting_information,training_event,training_event_information,final_briefing,final_briefing_information,build_up_day,build_up_day_information,re_entry_workshop,re_entry_workshop_information`,
       { headers }
     );
 
