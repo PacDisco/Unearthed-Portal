@@ -564,9 +564,6 @@
       }
     ];
 
-    const existingContent = portalData.trip_information_content
-      ? `<div>${portalData.trip_information_content}</div>` : "";
-
     const grid = events.map(e => {
       if (e.isLink) {
         return `
@@ -587,10 +584,7 @@
       `;
     }).join("");
 
-    return `
-      ${existingContent}
-      <div class="expedition-grid">${grid}</div>
-    `;
+    return `<div class="expedition-grid">${grid}</div>`;
   }
 
   function loadSection(field) {
