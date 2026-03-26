@@ -414,11 +414,11 @@
         portalData.portal_title || "UNEARTHED";
 
       document.getElementById("destination").innerText =
-        portalData.destination || "STUDENT PORTAL";
+        portalData.destination ? `DESTINATION: ${portalData.destination}` : "STUDENT PORTAL";
 
       if (portalData.price) {
         document.getElementById("programPrice").innerText =
-          `$${parseFloat(portalData.price).toLocaleString()}`;
+          `PRICE: $${parseFloat(portalData.price).toLocaleString()}`;
       }
 
       applyVisibility(portalData.labels);
