@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#2d6b74">
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Unearthed">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -139,6 +138,7 @@
       text-decoration: none !important;
     }
 
+    /* INSTALL SHEET */
     #installSheet {
       display: none;
       position: fixed;
@@ -292,9 +292,7 @@
       .student-grid {
         grid-template-columns: 1fr;
       }
-    }
 
-    @media (max-width: 768px) {
       .grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 12px;
@@ -452,7 +450,15 @@
     const content = document.getElementById("content");
     content.style.opacity = 0;
 
-    setTimeout(() => {
+    setTimeout(async () => {
+      if (field === "teacher_information_content") {
+        content.innerHTML = portalData[field] || "";
+        content.style.opacity = 1;
+        styleLinksAsButtons();
+        await loadStudentList(content);
+        return;
+      }
+
       let html = portalData[field] || "No content available";
 
       if (field === "payments_information_content" && portalData.payments_form_url) {
@@ -461,9 +467,70 @@
 
       content.innerHTML = html;
       content.style.opacity = 1;
-
       styleLinksAsButtons();
     }, 100);
+  }
+
+  async function loadStudentList(content) {
+    const loader = document.createElement("div");
+    loader.id = "studentLoader";
+    loader.style.cssText = "text-align:center; padding:30px; font-size:13px; color:#999; letter-spacing:1px;";
+    loader.textContent = "LOADING STUDENTS...";
+    content.appendChild(loader);
+
+    try {
+      const portalId = portalData.hs_object_id;
+      const res = await fetch(`/.netlify/functions/get-students?portalId=${portalId}`);
+      const data = await res.json();
+
+      document.getElementById("studentLoader")?.remove();
+
+      if (data.error || !data.students?.length) {
+        content.insertAdjacentHTML("beforeend", "<p style='color:#999; font-size:13px; margin-top:20px;'>No students found.</p>");
+        return;
+      }
+
+      const grid = document.createElement("div");
+      grid.className = "student-grid";
+
+      data.students.forEach(student => {
+        const paymentsHtml = student.payments.length
+          ? student.payments.map(p => `<span>$${parseFloat(p.amount).toLocaleString()}</span>`).join("")
+          : "<span>No payments recorded</span>";
+
+        const parentsHtml = student.parents.length
+          ? student.parents.map(p => `
+              <div class="parent-item">
+                <strong>${p.name}</strong><br>
+                ${p.email ? `<a href="mailto:${p.email}">${p.email}</a><br>` : ""}
+                ${p.phone ? `<a href="tel:${p.phone}">${p.phone}</a>` : ""}
+              </div>
+            `).join("")
+          : "<div class='parent-item' style='color:#999;'>No parents linked</div>";
+
+        grid.innerHTML += `
+          <div class="student-card">
+            <h3>${student.name || "Unknown"}</h3>
+            <div class="contact-info">
+              ${student.email ? `<a href="mailto:${student.email}">${student.email}</a><br>` : ""}
+              ${student.phone ? `<a href="tel:${student.phone}">${student.phone}</a>` : ""}
+            </div>
+            <div class="paid-badge">TOTAL PAID: $${student.totalPaid.toLocaleString()}</div>
+            <div class="payments-list">${paymentsHtml}</div>
+            <div class="parent-section">
+              <div class="parent-label">PARENTS / GUARDIANS</div>
+              ${parentsHtml}
+            </div>
+          </div>
+        `;
+      });
+
+      content.appendChild(grid);
+
+    } catch (err) {
+      document.getElementById("studentLoader")?.remove();
+      content.insertAdjacentHTML("beforeend", "<p style='color:#c0392b; font-size:13px; margin-top:20px;'>Error loading students.</p>");
+    }
   }
 
   function styleLinksAsButtons() {
