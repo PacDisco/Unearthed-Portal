@@ -395,18 +395,84 @@
       text-decoration: none;
     }
 
+    /* FLIGHTS & INSURANCE */
+    .flights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+
+    .flight-card {
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-top: 4px solid #59a1aa;
+      padding: 20px;
+    }
+
+    .flight-card.return {
+      border-top-color: #aed1db;
+    }
+
+    .flight-card h4 {
+      margin: 0 0 8px;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+    }
+
+    .flight-card .flight-date {
+      font-size: 15px;
+      font-weight: 600;
+      color: #231f20;
+      margin-bottom: 6px;
+    }
+
+    .flight-card .flight-detail {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 4px;
+    }
+
+    .flight-card .flight-link {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #59a1aa;
+      color: white !important;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-decoration: none !important;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+
+    .flight-card .flight-link:hover {
+      opacity: 0.85;
+    }
+
+    .insurance-section {
+      margin-top: 32px;
+      border-top: 1px solid #e2decf;
+      padding-top: 24px;
+    }
+
+    .insurance-section-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 16px;
+    }
+
     @media (max-width: 768px) {
-      .student-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .expedition-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .teacher-grid {
-        grid-template-columns: 1fr;
-      }
+      .student-grid { grid-template-columns: 1fr; }
+      .expedition-grid { grid-template-columns: 1fr; }
+      .teacher-grid { grid-template-columns: 1fr; }
+      .flights-grid { grid-template-columns: 1fr; }
 
       .grid {
         grid-template-columns: repeat(2, 1fr);
@@ -564,53 +630,29 @@
     if (clicked) clicked.classList.add("active");
   }
 
+  function formatDate(val) {
+    if (!val) return '<span class="tbc">TBC</span>';
+    const d = new Date(val);
+    return isNaN(d) ? val : d.toLocaleDateString("en-NZ", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+      hour: "2-digit", minute: "2-digit"
+    });
+  }
+
   function loadExpeditionOverview() {
     const p = portalData;
-
-    function formatDate(val) {
-      if (!val) return '<span class="tbc">TBC</span>';
-      const d = new Date(val);
-      return isNaN(d) ? val : d.toLocaleDateString("en-NZ", {
-        weekday: "long", year: "numeric", month: "long", day: "numeric",
-        hour: "2-digit", minute: "2-digit"
-      });
-    }
 
     function info(val) {
       return val ? `<div class="event-info">${val}</div>` : "";
     }
 
     const events = [
-      {
-        title: "ITINERARY",
-        isLink: true,
-        url: p.itinerary
-      },
-      {
-        title: "INITIAL PLANNING MEETING",
-        date: p.initial_planning_meeting,
-        info: p.initial_planning_meeting_information
-      },
-      {
-        title: "TRAINING EVENT",
-        date: p.training_event,
-        info: p.training_event_information
-      },
-      {
-        title: "FINAL BRIEFING",
-        date: p.final_briefing,
-        info: p.final_briefing_information
-      },
-      {
-        title: "BUILD-UP DAY",
-        date: p.build_up_day,
-        info: p.build_up_day_information
-      },
-      {
-        title: "RE-ENTRY WORKSHOP",
-        date: p.re_entry_workshop,
-        info: p.re_entry_workshop_information
-      }
+      { title: "ITINERARY", isLink: true, url: p.itinerary },
+      { title: "INITIAL PLANNING MEETING", date: p.initial_planning_meeting, info: p.initial_planning_meeting_information },
+      { title: "TRAINING EVENT", date: p.training_event, info: p.training_event_information },
+      { title: "FINAL BRIEFING", date: p.final_briefing, info: p.final_briefing_information },
+      { title: "BUILD-UP DAY", date: p.build_up_day, info: p.build_up_day_information },
+      { title: "RE-ENTRY WORKSHOP", date: p.re_entry_workshop, info: p.re_entry_workshop_information }
     ];
 
     const grid = events.map(e => {
@@ -621,19 +663,77 @@
             ${e.url
               ? `<a href="${e.url}" target="_blank" class="event-link">VIEW ITINERARY</a>`
               : `<span class="tbc">TBC</span>`}
-          </div>
-        `;
+          </div>`;
       }
       return `
         <div class="expedition-card">
           <h4>${e.title}</h4>
           <div class="event-date">${formatDate(e.date)}</div>
           ${info(e.info)}
-        </div>
-      `;
+        </div>`;
     }).join("");
 
     return `<div class="expedition-grid">${grid}</div>`;
+  }
+
+  function loadFlightsAndInsurance() {
+    const p = portalData;
+
+    function detail(label, val) {
+      return `<div class="flight-detail"><strong>${label}:</strong> ${val || '<span class="tbc">TBC</span>'}</div>`;
+    }
+
+    return `
+      <div class="flights-grid">
+        <div class="flight-card">
+          <h4>DEPARTURE FLIGHT</h4>
+          <div class="flight-date">${formatDate(p.flight_departure_date)}</div>
+          ${detail("Airline(s)", p.departure_airlines)}
+          ${detail("Routing", p.departure_routing)}
+        </div>
+        <div class="flight-card return">
+          <h4>RETURN FLIGHT</h4>
+          <div class="flight-date">${formatDate(p.return_flight_date)}</div>
+          ${detail("Airline(s)", p.return_flight_airlines)}
+          ${detail("Routing", p.return_flight_routing)}
+        </div>
+      </div>
+      <div class="insurance-section">
+        <div class="insurance-section-label">INSURANCE</div>
+        <div id="insuranceContent"><span style="font-size:13px; color:#999;">Loading insurance details...</span></div>
+      </div>
+    `;
+  }
+
+  async function loadInsurance() {
+    try {
+      const res = await fetch(`/.netlify/functions/get-insurance`);
+      const data = await res.json();
+
+      const el = document.getElementById("insuranceContent");
+      if (!el) return;
+
+      if (data.error) {
+        el.innerHTML = `<span style="color:#999; font-size:13px;">Insurance details unavailable.</span>`;
+        return;
+      }
+
+      const links = [];
+      if (data.insurance_overview_and_faqs) {
+        links.push(`<a href="${data.insurance_overview_and_faqs}" target="_blank" class="flight-link">INSURANCE OVERVIEW & FAQs</a>`);
+      }
+      if (data.insurance_policy_wording) {
+        links.push(`<a href="${data.insurance_policy_wording}" target="_blank" class="flight-link">POLICY WORDING</a>`);
+      }
+
+      el.innerHTML = links.length
+        ? `<div style="margin-top:8px;">${links.join("")}</div>`
+        : `<span class="tbc">TBC</span>`;
+
+    } catch (err) {
+      const el = document.getElementById("insuranceContent");
+      if (el) el.innerHTML = `<span style="color:#999; font-size:13px;">Insurance details unavailable.</span>`;
+    }
   }
 
   function loadSection(field) {
@@ -649,6 +749,13 @@
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadTeacherList(content);
+        return;
+      }
+
+      if (field === "destination_overview_content") {
+        content.innerHTML = loadFlightsAndInsurance();
+        content.style.opacity = 1;
+        await loadInsurance();
         return;
       }
 
@@ -765,7 +872,7 @@
   }
 
   function styleLinksAsButtons() {
-    const links = document.querySelectorAll("#content a:not(.event-link):not(.teacher-contact a)");
+    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.teacher-contact a)");
     const colors = ["#5b7f9e", "#59a1aa", "#a9a66e", "#d6a380"];
 
     links.forEach((link, index) => {
