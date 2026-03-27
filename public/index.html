@@ -204,57 +204,6 @@
       padding: 14px 20px;
     }
 
-/* TEACHER CARDS */
-    .teacher-section {
-      margin-top: 32px;
-      border-top: 1px solid #e2decf;
-      padding-top: 24px;
-    }
-
-    .teacher-section-label {
-      font-size: 11px;
-      letter-spacing: 1.5px;
-      font-weight: 600;
-      color: #999;
-      margin-bottom: 16px;
-    }
-
-    .teacher-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 16px;
-    }
-
-    .teacher-card {
-      background: #f9f8f2;
-      border: 1px solid #e2decf;
-      border-top: 4px solid #aed1db;
-      padding: 16px 20px;
-    }
-
-    .teacher-card h4 {
-      margin: 0 0 8px;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .teacher-card .teacher-contact {
-      font-size: 12px;
-      color: #666;
-      line-height: 1.8;
-    }
-
-    .teacher-card .teacher-contact a {
-      color: #59a1aa;
-      text-decoration: none;
-    }
-
-    @media (max-width: 768px) {
-      .teacher-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    
     /* STUDENT CARDS */
     .student-grid {
       display: grid;
@@ -401,12 +350,61 @@
       font-style: italic;
     }
 
+    /* TEACHER CARDS */
+    .teacher-section {
+      margin-top: 32px;
+      border-top: 1px solid #e2decf;
+      padding-top: 24px;
+    }
+
+    .teacher-section-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 16px;
+    }
+
+    .teacher-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .teacher-card {
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-top: 4px solid #aed1db;
+      padding: 16px 20px;
+    }
+
+    .teacher-card h4 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .teacher-card .teacher-contact {
+      font-size: 12px;
+      color: #666;
+      line-height: 1.8;
+    }
+
+    .teacher-card .teacher-contact a {
+      color: #59a1aa;
+      text-decoration: none;
+    }
+
     @media (max-width: 768px) {
       .student-grid {
         grid-template-columns: 1fr;
       }
 
       .expedition-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .teacher-grid {
         grid-template-columns: 1fr;
       }
 
@@ -650,6 +648,7 @@
         content.innerHTML = loadExpeditionOverview();
         content.style.opacity = 1;
         styleLinksAsButtons();
+        await loadTeacherList(content);
         return;
       }
 
@@ -666,6 +665,41 @@
       content.style.opacity = 1;
       styleLinksAsButtons();
     }, 100);
+  }
+
+  async function loadTeacherList(content) {
+    try {
+      const portalId = portalData.hs_object_id;
+      const res = await fetch(`/.netlify/functions/get-teachers?portalId=${portalId}`);
+      const data = await res.json();
+
+      if (data.error || !data.teachers?.length) return;
+
+      const section = document.createElement("div");
+      section.className = "teacher-section";
+      section.innerHTML = `<div class="teacher-section-label">SCHOOL CONTACTS</div>`;
+
+      const grid = document.createElement("div");
+      grid.className = "teacher-grid";
+
+      data.teachers.forEach(t => {
+        grid.innerHTML += `
+          <div class="teacher-card">
+            <h4>${t.name || "Unknown"}</h4>
+            <div class="teacher-contact">
+              ${t.email ? `<a href="mailto:${t.email}">${t.email}</a><br>` : ""}
+              ${t.phone ? `<a href="tel:${t.phone}">${t.phone}</a>` : ""}
+            </div>
+          </div>
+        `;
+      });
+
+      section.appendChild(grid);
+      content.appendChild(section);
+
+    } catch (err) {
+      console.error("Teacher load error:", err);
+    }
   }
 
   async function loadStudentList(content) {
@@ -731,7 +765,7 @@
   }
 
   function styleLinksAsButtons() {
-    const links = document.querySelectorAll("#content a:not(.event-link)");
+    const links = document.querySelectorAll("#content a:not(.event-link):not(.teacher-contact a)");
     const colors = ["#5b7f9e", "#59a1aa", "#a9a66e", "#d6a380"];
 
     links.forEach((link, index) => {
