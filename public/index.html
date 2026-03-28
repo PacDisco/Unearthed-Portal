@@ -341,9 +341,7 @@
       border-radius: 4px;
     }
 
-    .expedition-card .event-link:hover {
-      opacity: 0.85;
-    }
+    .expedition-card .event-link:hover { opacity: 0.85; }
 
     .tbc {
       color: #bbb;
@@ -450,9 +448,7 @@
       margin-right: 8px;
     }
 
-    .flight-card .flight-link:hover {
-      opacity: 0.85;
-    }
+    .flight-card .flight-link:hover { opacity: 0.85; }
 
     .insurance-section {
       margin-top: 32px;
@@ -466,6 +462,78 @@
       font-weight: 600;
       color: #999;
       margin-bottom: 16px;
+    }
+
+    /* PAYMENTS */
+    .payments-header {
+      margin-bottom: 24px;
+    }
+
+    .payments-header p {
+      font-size: 14px;
+      color: #444;
+      line-height: 1.7;
+      margin: 0 0 16px;
+    }
+
+    .payment-btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #2d6b74;
+      color: white !important;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-decoration: none !important;
+      border-radius: 4px;
+    }
+
+    .payment-btn:hover { opacity: 0.85; }
+
+    .payments-schedule {
+      margin-top: 24px;
+      border-top: 1px solid #e2decf;
+      padding-top: 24px;
+    }
+
+    .payments-schedule-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 16px;
+    }
+
+    .payment-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid #f0ede6;
+      gap: 20px;
+    }
+
+    .payment-row:last-child { border-bottom: none; }
+
+    .payment-row .payment-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+      min-width: 100px;
+    }
+
+    .payment-row .payment-date {
+      font-size: 14px;
+      color: #231f20;
+      flex: 1;
+    }
+
+    .payment-row .payment-amount {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2d6b74;
+      text-align: right;
     }
 
     @media (max-width: 768px) {
@@ -497,6 +565,18 @@
 
       header h1 {
         font-size: 18px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .payment-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+
+      .payment-row .payment-amount {
+        text-align: left;
       }
     }
   </style>
@@ -623,10 +703,7 @@
   function setActiveTile(field) {
     const tiles = document.querySelectorAll(".tile");
     tiles.forEach(tile => tile.classList.remove("active"));
-
-    const clicked = [...tiles].find(t =>
-      t.getAttribute("onclick")?.includes(field)
-    );
+    const clicked = [...tiles].find(t => t.getAttribute("onclick")?.includes(field));
     if (clicked) clicked.classList.add("active");
   }
 
@@ -636,6 +713,14 @@
     return isNaN(d) ? val : d.toLocaleDateString("en-NZ", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
       hour: "2-digit", minute: "2-digit"
+    });
+  }
+
+  function formatDateShort(val) {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d) ? val : d.toLocaleDateString("en-NZ", {
+      year: "numeric", month: "long", day: "numeric"
     });
   }
 
@@ -709,7 +794,6 @@
     try {
       const res = await fetch(`/.netlify/functions/get-insurance`);
       const data = await res.json();
-
       const el = document.getElementById("insuranceContent");
       if (!el) return;
 
@@ -736,6 +820,51 @@
     }
   }
 
+  function loadPayments() {
+    const p = portalData;
+
+    const infoHtml = p.payments_information_content
+      ? `<div class="payments-header"><div>${p.payments_information_content}</div></div>`
+      : "";
+
+    const btnHtml = p.payment_form_url
+      ? `<a href="${p.payment_form_url}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT</a>`
+      : "";
+
+    const rows = [];
+    for (let i = 1; i <= 10; i++) {
+      const date = p[`payment_date_${i}`];
+      const amount = p[`payment_amount_${i}`];
+      if (!date && !amount) continue;
+
+      const formattedDate = formatDateShort(date);
+      const formattedAmount = amount
+        ? `$${parseFloat(amount).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : '<span class="tbc">TBC</span>';
+
+      rows.push(`
+        <div class="payment-row">
+          <div class="payment-label">PAYMENT ${i}</div>
+          <div class="payment-date">${formattedDate || '<span class="tbc">TBC</span>'}</div>
+          <div class="payment-amount">${formattedAmount}</div>
+        </div>
+      `);
+    }
+
+    const scheduleHtml = rows.length ? `
+      <div class="payments-schedule">
+        <div class="payments-schedule-label">PAYMENT SCHEDULE</div>
+        ${rows.join("")}
+      </div>
+    ` : "";
+
+    return `
+      ${infoHtml}
+      ${btnHtml}
+      ${scheduleHtml}
+    `;
+  }
+
   function loadSection(field) {
     setActiveTile(field);
 
@@ -759,6 +888,12 @@
         return;
       }
 
+      if (field === "travel_information_content") {
+        content.innerHTML = loadPayments();
+        content.style.opacity = 1;
+        return;
+      }
+
       if (field === "teacher_information_content") {
         content.innerHTML = portalData[field] || "";
         content.style.opacity = 1;
@@ -779,7 +914,6 @@
       const portalId = portalData.hs_object_id;
       const res = await fetch(`/.netlify/functions/get-teachers?portalId=${portalId}`);
       const data = await res.json();
-
       if (data.error || !data.teachers?.length) return;
 
       const section = document.createElement("div");
@@ -872,7 +1006,7 @@
   }
 
   function styleLinksAsButtons() {
-    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.teacher-contact a)");
+    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.payment-btn):not(.teacher-contact a)");
     const colors = ["#5b7f9e", "#59a1aa", "#a9a66e", "#d6a380"];
 
     links.forEach((link, index) => {
