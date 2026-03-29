@@ -8,7 +8,7 @@ export async function handler(event) {
     };
 
     const res = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${FIXED_ID}?properties=insurance_overview_and_faqs,insurance_policy_wording,payment_form_url`,
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${FIXED_ID}?properties=insurance_overview_and_faqs,insurance_policy_wording,payment_form_url,payments_information_content`,
       { headers }
     );
 
@@ -29,7 +29,8 @@ export async function handler(event) {
       body: JSON.stringify({
         insurance_overview_and_faqs: data.properties?.insurance_overview_and_faqs || null,
         insurance_policy_wording: data.properties?.insurance_policy_wording || null,
-        payment_form_url: data.properties?.payment_form_url || null
+        payment_form_url: data.properties?.payment_form_url || null,
+        payments_information_content: data.properties?.payments_information_content || null
       })
     };
 
