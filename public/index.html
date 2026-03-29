@@ -469,13 +469,6 @@
       margin-bottom: 24px;
     }
 
-    .payments-header p {
-      font-size: 14px;
-      color: #444;
-      line-height: 1.7;
-      margin: 0 0 16px;
-    }
-
     .payment-btn {
       display: inline-block;
       padding: 12px 24px;
@@ -820,17 +813,10 @@
     }
   }
 
-  function loadPayments() {
+  async function loadPayments() {
     const p = portalData;
 
-    const infoHtml = p.payments_information_content
-      ? `<div class="payments-header"><div>${p.payments_information_content}</div></div>`
-      : "";
-
-    const btnHtml = p.payment_form_url
-      ? `<a href="${p.payment_form_url}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT</a>`
-      : "";
-
+    // Build payment schedule from associated portal object
     const rows = [];
     for (let i = 1; i <= 10; i++) {
       const date = p[`payment_date_${i}`];
@@ -857,6 +843,24 @@
         ${rows.join("")}
       </div>
     ` : "";
+
+    // Fetch payments_information_content and payment_form_url from global object
+    let btnHtml = "";
+    let infoHtml = "";
+    try {
+      const res = await fetch(`/.netlify/functions/get-insurance`);
+      const data = await res.json();
+
+      if (data.payments_information_content) {
+        infoHtml = `<div class="payments-header">${data.payments_information_content}</div>`;
+      }
+
+      if (data.payment_form_url) {
+        btnHtml = `<a href="${data.payment_form_url}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT</a>`;
+      }
+    } catch (err) {
+      console.error("Payment global fetch error:", err);
+    }
 
     return `
       ${infoHtml}
@@ -889,8 +893,10 @@
       }
 
       if (field === "travel_information_content") {
-        content.innerHTML = loadPayments();
+        content.innerHTML = "<div style='text-align:center; padding:30px; font-size:13px; color:#999; letter-spacing:1px;'>LOADING PAYMENTS...</div>";
         content.style.opacity = 1;
+        const html = await loadPayments();
+        content.innerHTML = html;
         return;
       }
 
