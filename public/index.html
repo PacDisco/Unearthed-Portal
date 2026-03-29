@@ -856,7 +856,7 @@
       }
 
       if (data.payment_form_url) {
-        btnHtml = `<a href="${data.payment_form_url}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT - SEE PAYMENT HISTORY</a>`;
+        btnHtml = `<a href="${data.payment_form_url}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
       }
     } catch (err) {
       console.error("Payment global fetch error:", err);
