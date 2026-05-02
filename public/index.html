@@ -553,6 +553,31 @@
       text-align: right;
     }
 
+    .payment-row.paid {
+      opacity: 0.92;
+    }
+
+    .payment-row.paid .payment-label {
+      color: #5b8a73;
+    }
+
+    .payment-row .paid-badge {
+      display: inline-block;
+      background: #5b8a73;
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      padding: 3px 8px;
+      border-radius: 2px;
+      vertical-align: 1px;
+    }
+
+    .payment-row .paid-badge::before {
+      content: "\2713  ";
+      font-weight: 700;
+    }
+
     @media (max-width: 768px) {
       .student-grid { grid-template-columns: 1fr; }
       .expedition-grid { grid-template-columns: 1fr; }
@@ -840,25 +865,39 @@
   async function loadPayments() {
     const p = portalData;
 
-    // Fetch payments_information_content and payment_form_url from global object FIRST
-    // so we can use payment_form_url to make each payment amount in the schedule clickable.
+    // Kick off both global-content and paid-payments fetches in parallel.
+    // get-insurance gives us payments_information_content + payment_form_url.
+    // get-paid-payments gives us each row's paid status from the contact's most
+    // recently created Deal (matched by sequence: deal.payment_N → schedule row N).
+    const insurancePromise = fetch(`/.netlify/functions/get-insurance`)
+      .then(r => r.json())
+      .catch(err => { console.error("Payment global fetch error:", err); return {}; });
+
+    const paidPromise = fetch(`/.netlify/functions/get-paid-payments?email=${encodeURIComponent(email)}`)
+      .then(r => r.json())
+      .catch(err => { console.error("Paid payments fetch error:", err); return { payments: [] }; });
+
+    const [insuranceData, paidData] = await Promise.all([insurancePromise, paidPromise]);
+
     let btnHtml = "";
     let infoHtml = "";
     let paymentFormUrl = null;
-    try {
-      const res = await fetch(`/.netlify/functions/get-insurance`);
-      const data = await res.json();
 
-      if (data.payments_information_content) {
-        infoHtml = `<div class="payments-header">${data.payments_information_content}</div>`;
-      }
+    if (insuranceData.payments_information_content) {
+      infoHtml = `<div class="payments-header">${insuranceData.payments_information_content}</div>`;
+    }
 
-      if (data.payment_form_url) {
-        paymentFormUrl = data.payment_form_url;
-        btnHtml = `<a href="${paymentFormUrl}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
-      }
-    } catch (err) {
-      console.error("Payment global fetch error:", err);
+    if (insuranceData.payment_form_url) {
+      paymentFormUrl = insuranceData.payment_form_url;
+      btnHtml = `<a href="${paymentFormUrl}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
+    }
+
+    // Build a map of paid entries keyed by their schedule row index (1..10).
+    const paidByIndex = {};
+    if (paidData && Array.isArray(paidData.payments)) {
+      paidData.payments.forEach(entry => {
+        if (entry && entry.index) paidByIndex[entry.index] = entry;
+      });
     }
 
     // Processing-fee config. The customer covers the card processing fee on top of
@@ -891,6 +930,23 @@
       return `${paymentFormUrl}?${params.toString()}`;
     }
 
+    // Format a paid entry's "actual amount · paid date" subtitle.
+    function formatPaidDetail(entry) {
+      const parts = [];
+      if (entry.amount != null) {
+        parts.push(fmtMoney(entry.amount));
+      }
+      if (entry.dateIso) {
+        const d = new Date(entry.dateIso);
+        if (!isNaN(d.getTime())) {
+          parts.push(d.toLocaleDateString("en-NZ", { year: "numeric", month: "short", day: "numeric" }));
+        }
+      } else if (entry.dateRaw) {
+        parts.push(entry.dateRaw);
+      }
+      return parts.length ? parts.join(" · ") : "Recorded on the deal";
+    }
+
     // Build payment schedule from associated portal object
     const rows = [];
     for (let i = 1; i <= 10; i++) {
@@ -899,16 +955,24 @@
       if (!date && !amount) continue;
 
       const formattedDate = formatDateShort(date);
+      const paidEntry = paidByIndex[i] || null;
 
       const baseNum = amount != null && amount !== "" ? parseFloat(amount) : null;
       const chargeNum = baseNum != null ? withProcessingFee(baseNum) : null;
 
-      const link = chargeNum != null ? buildPaymentLink(i, baseNum, chargeNum) : null;
-
       let amountCell;
-      if (chargeNum != null) {
+      let rowClass = "payment-row";
+
+      if (paidEntry) {
+        // Mark this row paid. Show the actual paid amount + date underneath
+        // the PAID badge; drop the click-to-pay link entirely.
+        rowClass += " paid";
+        amountCell = `<span class="paid-badge">PAID</span>` +
+          `<span class="payment-amount-note">${formatPaidDetail(paidEntry)}</span>`;
+      } else if (chargeNum != null) {
         const chargeText = fmtMoney(chargeNum);
         const baseText = fmtMoney(baseNum);
+        const link = buildPaymentLink(i, baseNum, chargeNum);
         const main = link
           ? `<a href="${link}" target="_blank" rel="noopener" class="payment-amount-link" title="Pay this installment (includes 3% processing fee)">${chargeText}</a>`
           : chargeText;
@@ -918,7 +982,7 @@
       }
 
       rows.push(`
-        <div class="payment-row">
+        <div class="${rowClass}">
           <div class="payment-label">PAYMENT ${i}</div>
           <div class="payment-date">${formattedDate || '<span class="tbc">TBC</span>'}</div>
           <div class="payment-amount">${amountCell}</div>
