@@ -529,6 +529,30 @@
       text-align: right;
     }
 
+    .payment-row .payment-amount .payment-amount-link {
+      color: #2d6b74;
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(45, 107, 116, 0.4);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .payment-row .payment-amount .payment-amount-link:hover {
+      color: #e8694a;
+      border-bottom-color: #e8694a;
+      text-decoration: none;
+    }
+
+    .payment-row .payment-amount-note {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0.4px;
+      color: #999;
+      text-align: right;
+    }
+
     @media (max-width: 768px) {
       .student-grid { grid-template-columns: 1fr; }
       .expedition-grid { grid-template-columns: 1fr; }
@@ -816,6 +840,57 @@
   async function loadPayments() {
     const p = portalData;
 
+    // Fetch payments_information_content and payment_form_url from global object FIRST
+    // so we can use payment_form_url to make each payment amount in the schedule clickable.
+    let btnHtml = "";
+    let infoHtml = "";
+    let paymentFormUrl = null;
+    try {
+      const res = await fetch(`/.netlify/functions/get-insurance`);
+      const data = await res.json();
+
+      if (data.payments_information_content) {
+        infoHtml = `<div class="payments-header">${data.payments_information_content}</div>`;
+      }
+
+      if (data.payment_form_url) {
+        paymentFormUrl = data.payment_form_url;
+        btnHtml = `<a href="${paymentFormUrl}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
+      }
+    } catch (err) {
+      console.error("Payment global fetch error:", err);
+    }
+
+    // Processing-fee config. The customer covers the card processing fee on top of
+    // the listed installment amount, so what they're actually charged at Stripe is
+    // base * (1 + PROCESSING_FEE_RATE), rounded to 2 decimals.
+    const PROCESSING_FEE_RATE = 0.03; // 3%
+
+    function withProcessingFee(amount) {
+      const n = parseFloat(amount);
+      if (!isFinite(n)) return null;
+      return Math.round(n * (1 + PROCESSING_FEE_RATE) * 100) / 100;
+    }
+
+    function fmtMoney(n) {
+      return `$${parseFloat(n).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    // Build a Stripe checkout URL for a specific payment row.
+    // `chargeAmount` is the fee-inclusive figure (what Stripe should actually charge).
+    // `baseAmount` is the listed installment amount. Both are sent so the receiving
+    // form / Stripe page has full context.
+    function buildPaymentLink(i, baseAmount, chargeAmount) {
+      if (!paymentFormUrl) return null;
+      const params = new URLSearchParams();
+      if (email) params.set("email", email);
+      params.set("payment", String(i));
+      if (chargeAmount != null) params.set("amount", String(chargeAmount));
+      if (baseAmount != null) params.set("base_amount", String(baseAmount));
+      params.set("processing_fee_rate", String(PROCESSING_FEE_RATE));
+      return `${paymentFormUrl}?${params.toString()}`;
+    }
+
     // Build payment schedule from associated portal object
     const rows = [];
     for (let i = 1; i <= 10; i++) {
@@ -824,15 +899,29 @@
       if (!date && !amount) continue;
 
       const formattedDate = formatDateShort(date);
-      const formattedAmount = amount
-        ? `$${parseFloat(amount).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : '<span class="tbc">TBC</span>';
+
+      const baseNum = amount != null && amount !== "" ? parseFloat(amount) : null;
+      const chargeNum = baseNum != null ? withProcessingFee(baseNum) : null;
+
+      const link = chargeNum != null ? buildPaymentLink(i, baseNum, chargeNum) : null;
+
+      let amountCell;
+      if (chargeNum != null) {
+        const chargeText = fmtMoney(chargeNum);
+        const baseText = fmtMoney(baseNum);
+        const main = link
+          ? `<a href="${link}" target="_blank" rel="noopener" class="payment-amount-link" title="Pay this installment (includes 3% processing fee)">${chargeText}</a>`
+          : chargeText;
+        amountCell = `${main}<span class="payment-amount-note">${baseText} + 3% fee</span>`;
+      } else {
+        amountCell = '<span class="tbc">TBC</span>';
+      }
 
       rows.push(`
         <div class="payment-row">
           <div class="payment-label">PAYMENT ${i}</div>
           <div class="payment-date">${formattedDate || '<span class="tbc">TBC</span>'}</div>
-          <div class="payment-amount">${formattedAmount}</div>
+          <div class="payment-amount">${amountCell}</div>
         </div>
       `);
     }
@@ -843,24 +932,6 @@
         ${rows.join("")}
       </div>
     ` : "";
-
-    // Fetch payments_information_content and payment_form_url from global object
-    let btnHtml = "";
-    let infoHtml = "";
-    try {
-      const res = await fetch(`/.netlify/functions/get-insurance`);
-      const data = await res.json();
-
-      if (data.payments_information_content) {
-        infoHtml = `<div class="payments-header">${data.payments_information_content}</div>`;
-      }
-
-      if (data.payment_form_url) {
-        btnHtml = `<a href="${data.payment_form_url}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
-      }
-    } catch (err) {
-      console.error("Payment global fetch error:", err);
-    }
 
     return `
       ${infoHtml}
