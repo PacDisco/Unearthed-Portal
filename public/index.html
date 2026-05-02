@@ -578,6 +578,57 @@
       font-weight: 700;
     }
 
+    /* MANUALS / RESOURCES */
+    .manual-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 8px;
+    }
+
+    .manual-card {
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-top: 4px solid #5b7f9e;
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+    }
+
+    .manual-card h4 {
+      margin: 0 0 16px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      color: #231f20;
+    }
+
+    .manual-card .manual-link {
+      display: inline-block;
+      align-self: flex-start;
+      padding: 10px 18px;
+      background: #5b7f9e;
+      color: white !important;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-decoration: none !important;
+      border-radius: 4px;
+      transition: opacity 0.2s ease;
+    }
+
+    .manual-card .manual-link:hover { opacity: 0.85; }
+
+    .manuals-empty {
+      color: #999;
+      font-size: 13px;
+      text-align: center;
+      padding: 30px 10px;
+      letter-spacing: 0.5px;
+    }
+
     @media (max-width: 768px) {
       .student-grid { grid-template-columns: 1fr; }
       .expedition-grid { grid-template-columns: 1fr; }
@@ -688,6 +739,43 @@
   let portalData = {};
 
   const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-sand"];
+
+  // ----- Manuals / Resources tab -----
+  // The Manuals tile renders one card per resource below.
+  // To add a new resource: create a single-line property on the Portal custom
+  // object (snake_case is HubSpot's default), populate with a URL, and add an
+  // entry here. Empty/missing properties are auto-hidden in the UI.
+  // To rename or fix a property, change the `prop` value to match HubSpot's
+  // internal name (Settings → Properties → the property → "Internal name").
+  const MANUAL_FIELDS = [
+    { label: "Student Manual",    prop: "student_manual" },
+    { label: "Student Handbook",  prop: "student_handbook" },
+    { label: "Gear List",         prop: "gear_list" },
+    { label: "Fundraising Guide", prop: "fundraising_guide" },
+    { label: "Fitness",           prop: "fitness" }
+  ];
+
+  function renderManualsCards() {
+    const cards = MANUAL_FIELDS
+      .filter(f => {
+        const v = portalData[f.prop];
+        return v && String(v).trim();
+      })
+      .map(f => {
+        const url = String(portalData[f.prop]).trim();
+        return `
+          <div class="manual-card">
+            <h4>${f.label.toUpperCase()}</h4>
+            <a href="${url}" target="_blank" rel="noopener" class="manual-link">VIEW DOCUMENT</a>
+          </div>
+        `;
+      });
+
+    if (cards.length === 0) {
+      return `<div class="manuals-empty">No resources have been added yet.</div>`;
+    }
+    return `<div class="manual-grid">${cards.join("")}</div>`;
+  }
 
   // Used to safely embed strings inside HTML attributes (e.g. data-description).
   function attrEsc(s) {
@@ -1143,6 +1231,14 @@
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadStudentList(content);
+        return;
+      }
+
+      if (field === "general_information_content") {
+        // Manuals / Resources tab — render one card per populated resource
+        // from the Portal record's URL fields (see MANUAL_FIELDS at the top).
+        content.innerHTML = renderManualsCards();
+        content.style.opacity = 1;
         return;
       }
 
