@@ -1242,6 +1242,27 @@
         return;
       }
 
+      if (field === "faqs") {
+        // FAQs come from the global Portal record (id 50506535214) by default;
+        // the per-trip `portalData.faqs` is used as a fallback if the global
+        // FAQ field is empty.
+        content.innerHTML = `<div style="color:#999; font-size:13px; text-align:center; padding:30px; letter-spacing:1px;">LOADING FAQs...</div>`;
+        content.style.opacity = 1;
+        try {
+          const res = await fetch(`/.netlify/functions/get-insurance`);
+          const data = await res.json();
+          const globalFaqs = (data.global_faqs || "").trim();
+          const tripFaqs = (portalData.faqs || "").trim();
+          const html = globalFaqs || tripFaqs || "No FAQs available";
+          content.innerHTML = html;
+        } catch (err) {
+          console.error("FAQ fetch error:", err);
+          content.innerHTML = portalData.faqs || "No FAQs available";
+        }
+        styleLinksAsButtons();
+        return;
+      }
+
       let html = portalData[field] || "No content available";
       content.innerHTML = html;
       content.style.opacity = 1;
