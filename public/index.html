@@ -1367,16 +1367,23 @@
   }
 
   function styleLinksAsButtons() {
-    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.payment-btn):not(.teacher-contact a)");
+    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.payment-btn):not(.payment-amount-link):not(.manual-link):not(.teacher-contact a)");
     const colors = ["#5b7f9e", "#59a1aa", "#a9a66e", "#d6a380"];
 
-    links.forEach((link, index) => {
+    let buttonIndex = 0;
+    links.forEach((link) => {
+      const href = (link.getAttribute("href") || "").trim();
+      // Leave email/phone/anchor links alone — they're contact actions or
+      // in-page jumps, not navigation buttons.
+      if (/^(mailto:|tel:|sms:|#)/i.test(href)) return;
+
       link.classList.add("portal-btn");
-      if (index === 0) {
+      if (buttonIndex === 0) {
         link.style.background = "#e8694a";
       } else {
-        link.style.background = colors[(index - 1) % colors.length];
+        link.style.background = colors[(buttonIndex - 1) % colors.length];
       }
+      buttonIndex++;
 
       if (link.href && email) {
         try {
