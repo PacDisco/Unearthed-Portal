@@ -689,6 +689,95 @@
 
   const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-sand"];
 
+  // Used to safely embed strings inside HTML attributes (e.g. data-description).
+  function attrEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // Click handler for per-row payment amounts. Creates a Stripe Checkout Session
+  // server-side via /.netlify/functions/create-checkout-session and redirects
+  // the user straight to checkout.stripe.com — bypassing the intermediate
+  // "make payment + history" page.
+  //
+  // Opens a new tab synchronously inside the click event so popup blockers
+  // don't bite, then navigates that tab once Stripe returns the session URL.
+  // Falls back to the link's href (the intermediate page) on any failure.
+  async function startCheckout(event, el) {
+    event.preventDefault();
+    if (window.__stripeCheckoutBusy) return false;
+    window.__stripeCheckoutBusy = true;
+
+    const fallbackHref = el.getAttribute("href") || "";
+    const newWin = window.open("about:blank", "_blank");
+
+    const originalOpacity = el.style.opacity;
+    el.style.opacity = "0.55";
+    el.style.pointerEvents = "none";
+
+    try {
+      const payload = {
+        email,
+        paymentIndex: parseInt(el.dataset.paymentIndex, 10) || null,
+        baseAmount: el.dataset.baseAmount ? parseFloat(el.dataset.baseAmount) : null,
+        chargeAmount: el.dataset.chargeAmount ? parseFloat(el.dataset.chargeAmount) : null,
+        description: el.dataset.description || ""
+      };
+
+      const res = await fetch("/.netlify/functions/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      let data = {};
+      try { data = await res.json(); } catch (e) { /* ignore */ }
+
+      if (res.ok && data.url) {
+        if (newWin) {
+          newWin.location.href = data.url;
+        } else {
+          // Popup blocked — fall back to same-tab redirect
+          window.location.href = data.url;
+        }
+        return false;
+      }
+
+      // Stripe call didn't work. Fall through to the intermediate page so the
+      // user can still complete payment.
+      console.error("Checkout creation failed:", data);
+      if (newWin) {
+        if (fallbackHref && fallbackHref !== "#") {
+          newWin.location.href = fallbackHref;
+        } else {
+          newWin.close();
+        }
+      }
+      alert("Could not start direct Stripe checkout. " +
+            (data.error ? "(" + data.error + ") " : "") +
+            "Opening the standard payment page instead.");
+
+    } catch (err) {
+      console.error("Checkout error:", err);
+      if (newWin) {
+        if (fallbackHref && fallbackHref !== "#") {
+          newWin.location.href = fallbackHref;
+        } else {
+          newWin.close();
+        }
+      }
+      alert("Could not reach the payment service. Opening the standard payment page instead.");
+    } finally {
+      el.style.opacity = originalOpacity;
+      el.style.pointerEvents = "";
+      window.__stripeCheckoutBusy = false;
+    }
+    return false;
+  }
+
   async function init(retries = 3) {
     try {
       const res = await fetch(`/.netlify/functions/portal?email=${email}`);
@@ -972,9 +1061,19 @@
       } else if (chargeNum != null) {
         const chargeText = fmtMoney(chargeNum);
         const baseText = fmtMoney(baseNum);
-        const link = buildPaymentLink(i, baseNum, chargeNum);
+        const link = buildPaymentLink(i, baseNum, chargeNum); // fallback to the intermediate page
+        const tripName = portalData.portal_title || portalData.destination || "Unearthed";
+        const description = `${tripName} — Payment ${i}`;
         const main = link
-          ? `<a href="${link}" target="_blank" rel="noopener" class="payment-amount-link" title="Pay this installment (includes 3% processing fee)">${chargeText}</a>`
+          ? `<a href="${link}"
+                target="_blank" rel="noopener"
+                class="payment-amount-link"
+                title="Pay this installment (includes 3% processing fee)"
+                data-payment-index="${i}"
+                data-base-amount="${baseNum}"
+                data-charge-amount="${chargeNum}"
+                data-description="${attrEsc(description)}"
+                onclick="return startCheckout(event, this);">${chargeText}</a>`
           : chargeText;
         amountCell = `${main}<span class="payment-amount-note">${baseText} + 3% fee</span>`;
       } else {
