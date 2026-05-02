@@ -1080,10 +1080,14 @@
         amountCell = '<span class="tbc">TBC</span>';
       }
 
+      // Row 1 is the deposit — label it as such and don't render a due date.
+      const rowLabel = i === 1 ? "DEPOSIT" : `PAYMENT ${i}`;
+      const dateCell = i === 1 ? "" : (formattedDate || '<span class="tbc">TBC</span>');
+
       rows.push(`
         <div class="${rowClass}">
-          <div class="payment-label">PAYMENT ${i}</div>
-          <div class="payment-date">${formattedDate || '<span class="tbc">TBC</span>'}</div>
+          <div class="payment-label">${rowLabel}</div>
+          <div class="payment-date">${dateCell}</div>
           <div class="payment-amount">${amountCell}</div>
         </div>
       `);
