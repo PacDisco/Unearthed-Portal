@@ -710,9 +710,14 @@
 
     .docs-jotform-iframe {
       width: 100%;
-      min-height: 700px;
       border: 1px solid #e2decf;
       background: white;
+      /* Initial height — Jotform's embed handler adjusts this to fit the
+         rendered form once it loads, so the form never lives in a scrolling
+         box. The min-height keeps things from collapsing if the handler
+         hasn't fired yet (slow network, etc.). */
+      min-height: 539px;
+      display: block;
     }
 
     .docs-form-missing {
@@ -1377,29 +1382,40 @@
   }
 
   // Renders the Document Uploads tab — list of previously uploaded files
-  // (from Jotform) at the top, embedded upload form below.
+  // (from one or more Jotforms) at the top, with each form embedded below.
+  //
+  // Multiple form URLs can be configured by putting them on separate lines
+  // (or comma-separated) in the `documents_upload_form` property on the
+  // global Portal record. Each URL becomes its own embedded form section,
+  // and submissions from all of them are aggregated in the documents list.
   async function loadDocumentsTab(content) {
-    let formUrl = null;
+    let formInputs = [];     // [{ url, formId, origin }]
     let documents = [];
+    let formTitlesById = {}; // { formId: title }
     let docsError = null;
 
     try {
-      // 1. Get the form URL from the global Portal record.
+      // 1. Get the configured form URL(s) from the global Portal record.
       const insRes = await fetch(`/.netlify/functions/get-insurance`);
       const insData = await insRes.json();
-      formUrl = insData?.documents_upload_form || null;
+      const raw = insData?.documents_upload_form || "";
 
-      // 2. If we have a form URL, extract its form ID and fetch this user's prior submissions.
-      if (formUrl) {
-        const formIdMatch = String(formUrl).match(/(\d{15,18})/);
-        const formId = formIdMatch ? formIdMatch[1] : null;
-        if (formId) {
+      formInputs = parseFormInputs(raw);
+
+      // 2. If we have at least one form, ask the backend for this user's
+      //    prior submissions across all of them in a single call.
+      if (formInputs.length > 0) {
+        const ids = formInputs.map(f => f.formId).filter(Boolean).join(",");
+        if (ids) {
           const docsRes = await fetch(
-            `/.netlify/functions/get-uploaded-documents?email=${encodeURIComponent(email)}&formId=${encodeURIComponent(formId)}`
+            `/.netlify/functions/get-uploaded-documents?email=${encodeURIComponent(email)}&formIds=${encodeURIComponent(ids)}`
           );
           const docsData = await docsRes.json();
           if (docsData.error) docsError = docsData.error;
           documents = Array.isArray(docsData.documents) ? docsData.documents : [];
+          (docsData.forms || []).forEach(f => {
+            if (f && f.id) formTitlesById[f.id] = f.title;
+          });
         }
       }
     } catch (err) {
@@ -1422,25 +1438,89 @@
     }
     html += `</div>`;
 
-    // b. Upload form
-    html += `<div class="docs-section">
-      <div class="docs-section-label">UPLOAD A NEW DOCUMENT</div>`;
-    if (formUrl) {
-      // Append the email as a query param so Jotform can prefill the email
-      // field if the form is configured to read it.
-      const sep = formUrl.includes("?") ? "&" : "?";
-      const embedUrl = `${formUrl}${sep}email=${encodeURIComponent(email)}`;
-      html += `<iframe src="${embedUrl}"
-                       class="docs-jotform-iframe"
-                       title="Document upload form"
-                       loading="lazy"
-                       allow="geolocation; microphone; camera"></iframe>`;
+    // b. One section per configured upload form
+    if (formInputs.length === 0) {
+      html += `<div class="docs-section">
+        <div class="docs-section-label">UPLOAD A NEW DOCUMENT</div>
+        <div class="docs-form-missing">Document upload form not yet configured. Set <code>documents_upload_form</code> on the global Portal record (one Jotform URL per line for multiple forms).</div>
+      </div>`;
     } else {
-      html += `<div class="docs-form-missing">Document upload form not yet configured. Set <code>documents_upload_form</code> on the global Portal record.</div>`;
+      formInputs.forEach((f, i) => {
+        const sep = f.url.includes("?") ? "&" : "?";
+        const embedUrl = `${f.url}${sep}email=${encodeURIComponent(email)}`;
+        const title = (formTitlesById[f.formId] || "").trim();
+        const heading = title ? title.toUpperCase() : (formInputs.length > 1 ? `UPLOAD A NEW DOCUMENT (${i + 1})` : "UPLOAD A NEW DOCUMENT");
+        const iframeId = `JotFormIFrame-${f.formId}`;
+        html += `<div class="docs-section">
+          <div class="docs-section-label">${attrEsc(heading)}</div>
+          <iframe id="${iframeId}"
+                  src="${attrEsc(embedUrl)}"
+                  class="docs-jotform-iframe"
+                  title="${attrEsc(title || "Document upload form")}"
+                  frameborder="0"
+                  scrolling="no"
+                  allowtransparency="true"
+                  allow="geolocation; microphone; camera; fullscreen"></iframe>
+        </div>`;
+      });
     }
-    html += `</div>`;
 
     content.innerHTML = html;
+
+    // 4. Tell Jotform's embed handler about each iframe so it can
+    //    auto-resize them to fit content (no scrolling box). The handler
+    //    script is loaded once and reused across all forms.
+    if (formInputs.length > 0) {
+      await ensureJotformEmbedHandlerLoaded();
+      formInputs.forEach(f => {
+        try {
+          if (typeof window.jotformEmbedHandler === "function") {
+            window.jotformEmbedHandler(`iframe[id='JotFormIFrame-${f.formId}']`, f.origin);
+          }
+        } catch (err) {
+          console.warn("jotformEmbedHandler failed for", f.formId, err);
+        }
+      });
+    }
+  }
+
+  // Splits the documents_upload_form HubSpot value into one entry per form URL,
+  // and pulls out the form ID + origin (so the embed handler can scope its
+  // postMessage listener to the right host — form.jotform.com / eu.jotform.com).
+  function parseFormInputs(raw) {
+    if (!raw) return [];
+    const urls = String(raw)
+      .split(/[\s,]+/)              // split on whitespace, newlines, commas
+      .map(s => s.trim())
+      .filter(s => /^https?:\/\//i.test(s));
+    const out = [];
+    for (const url of urls) {
+      const idMatch = url.match(/(\d{15,18})/);
+      if (!idMatch) continue;
+      let origin = "https://form.jotform.com";
+      try { origin = new URL(url).origin; } catch (_) { /* keep default */ }
+      out.push({ url, formId: idMatch[1], origin });
+    }
+    return out;
+  }
+
+  // Loads Jotform's embed handler script once per page load. Subsequent calls
+  // resolve immediately (the handler exposes a global `jotformEmbedHandler`).
+  function ensureJotformEmbedHandlerLoaded() {
+    if (window.__jotformHandlerPromise) return window.__jotformHandlerPromise;
+    window.__jotformHandlerPromise = new Promise((resolve) => {
+      if (typeof window.jotformEmbedHandler === "function") return resolve();
+      const s = document.createElement("script");
+      s.src = "https://cdn.jotfor.ms/s/umd/latest/for-form-embed-handler.js";
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => {
+        console.warn("Jotform embed handler script failed to load.");
+        resolve();
+      };
+      document.head.appendChild(s);
+    });
+    return window.__jotformHandlerPromise;
   }
 
   function renderDocumentCard(doc) {
