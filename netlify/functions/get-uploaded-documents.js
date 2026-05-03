@@ -15,6 +15,19 @@
 // Optional env var: JOTFORM_BASE_URL (default https://api.jotform.com — set to
 //                   https://eu-api.jotform.com or https://hipaa-api.jotform.com
 //                   if your account is on those regions)
+//
+// Per-form labelling:
+//   Most forms (e.g. the application form) have one named upload field per
+//   document — "Passport", "Medical Form", etc. — and we use that field's
+//   own label as the document name in the portal.
+//
+//   The free-form "document upload" form (id 251396787451873) instead has a
+//   repeating pattern of "Document Name" textbox + generic file-upload, so we
+//   need to use the value the parent typed into that textbox as the label.
+//   Form IDs in DOC_NAME_PATTERN_FORMS get this special handling.
+const DOC_NAME_PATTERN_FORMS = new Set([
+  "251396787451873"
+]);
 
 export async function handler(event) {
   try {
@@ -101,24 +114,46 @@ async function loadFormData(formId, cleanEmail, apiKey, baseUrl) {
     return out;
   }
 
+  const useDocNamePattern = DOC_NAME_PATTERN_FORMS.has(String(formId));
+
   for (const submission of submissions.list) {
     const answers = submission?.answers || {};
+
+    // Sort answers by `order` so we can detect a "Document Name" textbox
+    // that immediately precedes a file-upload field.
+    const ordered = Object.entries(answers)
+      .map(([qid, a]) => ({ qid, ...(a || {}) }))
+      .sort((x, y) => {
+        const ox = parseInt(x.order, 10);
+        const oy = parseInt(y.order, 10);
+        if (Number.isFinite(ox) && Number.isFinite(oy)) return ox - oy;
+        return parseInt(x.qid, 10) - parseInt(y.qid, 10);
+      });
+
     let submissionEmail = null;
+    let lastTextValue = null; // last non-empty textbox/textarea answer seen
     const fileUploads = [];
 
-    for (const qid of Object.keys(answers)) {
-      const a = answers[qid] || {};
+    for (const a of ordered) {
       const t = String(a.type || "").toLowerCase();
       const label = a.text || a.name || "";
 
       if (t === "control_email" && a.answer) {
         submissionEmail = String(a.answer).toLowerCase().trim();
+      } else if (useDocNamePattern && (t === "control_textbox" || t === "control_textarea")) {
+        const v = a.answer;
+        if (v && String(v).trim()) lastTextValue = String(v).trim();
       } else if (t === "control_fileupload" && a.answer) {
+        // On a "doc name + upload" form, prefer the most recent textbox value;
+        // otherwise fall back to the upload field's own label.
+        const effectiveLabel = (useDocNamePattern && lastTextValue) ? lastTextValue : label;
         const v = a.answer;
         const urls = Array.isArray(v) ? v.filter(Boolean) : [String(v)].filter(Boolean);
         for (const u of urls) {
-          fileUploads.push({ url: u, fieldLabel: label });
+          fileUploads.push({ url: u, fieldLabel: effectiveLabel });
         }
+        // Don't carry the same textbox value over to the next file upload.
+        lastTextValue = null;
       }
     }
 
