@@ -629,6 +629,100 @@
       letter-spacing: 0.5px;
     }
 
+    /* DOCUMENT UPLOADS */
+    .docs-section-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 16px;
+    }
+
+    .docs-section + .docs-section {
+      margin-top: 32px;
+      border-top: 1px solid #e2decf;
+      padding-top: 24px;
+    }
+
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+
+    .docs-card {
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-top: 4px solid #a9a66e;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+    }
+
+    .docs-card h4 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+    }
+
+    .docs-card .docs-filename {
+      font-size: 13px;
+      color: #231f20;
+      word-break: break-all;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .docs-card .docs-date {
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 12px;
+      letter-spacing: 0.4px;
+    }
+
+    .docs-card .docs-link {
+      display: inline-block;
+      align-self: flex-start;
+      padding: 8px 16px;
+      background: #a9a66e;
+      color: white !important;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-decoration: none !important;
+      border-radius: 4px;
+      transition: opacity 0.2s ease;
+    }
+
+    .docs-card .docs-link:hover { opacity: 0.85; }
+
+    .docs-empty {
+      color: #999;
+      font-size: 13px;
+      padding: 16px 0 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .docs-jotform-iframe {
+      width: 100%;
+      min-height: 700px;
+      border: 1px solid #e2decf;
+      background: white;
+    }
+
+    .docs-form-missing {
+      color: #999;
+      font-size: 13px;
+      text-align: center;
+      padding: 30px 10px;
+      letter-spacing: 0.5px;
+    }
+
     @media (max-width: 768px) {
       .student-grid { grid-template-columns: 1fr; }
       .expedition-grid { grid-template-columns: 1fr; }
@@ -1242,6 +1336,18 @@
         return;
       }
 
+      if (field === "family_information_content") {
+        // Document Uploads tab — list previously-uploaded files (pulled from
+        // Jotform's API by the logged-in email) and embed the upload form
+        // beneath. Form URL comes from documents_upload_form on the global
+        // Portal record (id 50506535214).
+        content.innerHTML =
+          `<div style="color:#999; font-size:13px; text-align:center; padding:30px; letter-spacing:1px;">LOADING DOCUMENTS...</div>`;
+        content.style.opacity = 1;
+        await loadDocumentsTab(content);
+        return;
+      }
+
       if (field === "faqs") {
         // FAQs come from the global Portal record (id 50506535214) by default;
         // the per-trip `portalData.faqs` is used as a fallback if the global
@@ -1268,6 +1374,95 @@
       content.style.opacity = 1;
       styleLinksAsButtons();
     }, 100);
+  }
+
+  // Renders the Document Uploads tab — list of previously uploaded files
+  // (from Jotform) at the top, embedded upload form below.
+  async function loadDocumentsTab(content) {
+    let formUrl = null;
+    let documents = [];
+    let docsError = null;
+
+    try {
+      // 1. Get the form URL from the global Portal record.
+      const insRes = await fetch(`/.netlify/functions/get-insurance`);
+      const insData = await insRes.json();
+      formUrl = insData?.documents_upload_form || null;
+
+      // 2. If we have a form URL, extract its form ID and fetch this user's prior submissions.
+      if (formUrl) {
+        const formIdMatch = String(formUrl).match(/(\d{15,18})/);
+        const formId = formIdMatch ? formIdMatch[1] : null;
+        if (formId) {
+          const docsRes = await fetch(
+            `/.netlify/functions/get-uploaded-documents?email=${encodeURIComponent(email)}&formId=${encodeURIComponent(formId)}`
+          );
+          const docsData = await docsRes.json();
+          if (docsData.error) docsError = docsData.error;
+          documents = Array.isArray(docsData.documents) ? docsData.documents : [];
+        }
+      }
+    } catch (err) {
+      console.error("Documents tab load error:", err);
+      docsError = err.message;
+    }
+
+    // 3. Build the page.
+    let html = "";
+
+    // a. Uploaded documents list
+    html += `<div class="docs-section">
+      <div class="docs-section-label">YOUR UPLOADED DOCUMENTS</div>`;
+    if (docsError) {
+      html += `<div class="docs-empty">Could not load uploaded documents: ${attrEsc(docsError)}</div>`;
+    } else if (documents.length === 0) {
+      html += `<div class="docs-empty">No documents uploaded yet.</div>`;
+    } else {
+      html += `<div class="docs-grid">${documents.map(renderDocumentCard).join("")}</div>`;
+    }
+    html += `</div>`;
+
+    // b. Upload form
+    html += `<div class="docs-section">
+      <div class="docs-section-label">UPLOAD A NEW DOCUMENT</div>`;
+    if (formUrl) {
+      // Append the email as a query param so Jotform can prefill the email
+      // field if the form is configured to read it.
+      const sep = formUrl.includes("?") ? "&" : "?";
+      const embedUrl = `${formUrl}${sep}email=${encodeURIComponent(email)}`;
+      html += `<iframe src="${embedUrl}"
+                       class="docs-jotform-iframe"
+                       title="Document upload form"
+                       loading="lazy"
+                       allow="geolocation; microphone; camera"></iframe>`;
+    } else {
+      html += `<div class="docs-form-missing">Document upload form not yet configured. Set <code>documents_upload_form</code> on the global Portal record.</div>`;
+    }
+    html += `</div>`;
+
+    content.innerHTML = html;
+  }
+
+  function renderDocumentCard(doc) {
+    const label = (doc.fieldLabel || "DOCUMENT").toUpperCase();
+    const filename = doc.filename || "Document";
+    let dateStr = "";
+    if (doc.uploadedAt) {
+      const d = new Date(doc.uploadedAt);
+      if (!isNaN(d.getTime())) {
+        dateStr = d.toLocaleDateString("en-NZ", { year: "numeric", month: "short", day: "numeric" });
+      }
+    }
+    return `
+      <div class="docs-card">
+        <div>
+          <h4>${attrEsc(label)}</h4>
+          <div class="docs-filename">${attrEsc(filename)}</div>
+          ${dateStr ? `<div class="docs-date">Uploaded ${attrEsc(dateStr)}</div>` : ""}
+        </div>
+        <a href="${attrEsc(doc.url)}" target="_blank" rel="noopener" class="docs-link">VIEW DOCUMENT</a>
+      </div>
+    `;
   }
 
   async function loadTeacherList(content) {
