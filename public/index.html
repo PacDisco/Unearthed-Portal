@@ -678,6 +678,15 @@
       line-height: 1.4;
     }
 
+    /* When the parent didn't provide a Document Name and the upload field's
+       own label was generic, the heading is dropped — make the filename
+       slightly bigger so the card still has a clear primary line. */
+    .docs-card--no-heading .docs-filename {
+      font-size: 15px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
     .docs-card .docs-date {
       font-size: 11px;
       color: #999;
@@ -1524,7 +1533,12 @@
   }
 
   function renderDocumentCard(doc) {
-    const label = (doc.fieldLabel || "DOCUMENT").toUpperCase();
+    // The backend returns null for fieldLabel when the upload field is generic
+    // (e.g. "Additional file upload") AND no Document Name was typed, so we
+    // skip the heading entirely rather than showing a misleading one.
+    const labelText = doc.fieldLabel ? String(doc.fieldLabel).trim() : "";
+    const showHeading = !!labelText;
+    const heading = showHeading ? labelText.toUpperCase() : "";
     const filename = doc.filename || "Document";
     let dateStr = "";
     if (doc.uploadedAt) {
@@ -1534,9 +1548,9 @@
       }
     }
     return `
-      <div class="docs-card">
+      <div class="docs-card${showHeading ? "" : " docs-card--no-heading"}">
         <div>
-          <h4>${attrEsc(label)}</h4>
+          ${showHeading ? `<h4>${attrEsc(heading)}</h4>` : ""}
           <div class="docs-filename">${attrEsc(filename)}</div>
           ${dateStr ? `<div class="docs-date">Uploaded ${attrEsc(dateStr)}</div>` : ""}
         </div>
