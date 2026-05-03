@@ -8,7 +8,7 @@ export async function handler(event) {
     };
 
     const res = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${FIXED_ID}?properties=insurance_overview_and_faqs,insurance_policy_wording,payment_form_url,payments_information_content,faqs`,
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${FIXED_ID}?properties=insurance_overview_and_faqs,insurance_policy_wording,payment_form_url,payments_information_content,faqs,documents_upload_form`,
       { headers }
     );
 
@@ -33,7 +33,9 @@ export async function handler(event) {
         payments_information_content: data.properties?.payments_information_content || null,
         // Renamed in the response so the frontend can disambiguate from the
         // per-trip `faqs` it already gets via portal.js → portalData.
-        global_faqs: data.properties?.faqs || null
+        global_faqs: data.properties?.faqs || null,
+        // Jotform URL where parents/students upload documents.
+        documents_upload_form: data.properties?.documents_upload_form || null
       })
     };
 
