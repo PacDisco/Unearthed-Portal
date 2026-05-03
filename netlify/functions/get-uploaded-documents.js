@@ -21,13 +21,39 @@
 //   document — "Passport", "Medical Form", etc. — and we use that field's
 //   own label as the document name in the portal.
 //
-//   The free-form "document upload" form (id 251396787451873) instead has a
-//   repeating pattern of "Document Name" textbox + generic file-upload, so we
-//   need to use the value the parent typed into that textbox as the label.
-//   Form IDs in DOC_NAME_PATTERN_FORMS get this special handling.
+//   The free-form "document upload" form has a repeating pattern of
+//   "Document Name" textbox + generic file-upload, so we use the value the
+//   parent typed into that textbox as the label.
+//
+//   The doc-name replacement is triggered when EITHER:
+//     (a) the form's ID is opted in via DOC_NAME_PATTERN_FORMS below, OR
+//     (b) the upload field's own label is generic — "Additional File Upload",
+//         "Upload", "File", "Attachment", "Photo Upload", etc.
+//   Specific labels like "Passport" or "Medical Form" never get overridden,
+//   so the application form is unaffected.
 const DOC_NAME_PATTERN_FORMS = new Set([
-  "251396787451873"
+  // Add a form ID here if it has SPECIFIC upload-field labels but you still
+  // want the textbox-before-upload value to take precedence. Most forms don't
+  // need this — the generic-label fallback below handles them automatically.
 ]);
+
+// Returns true if a Jotform upload-field label is generic enough that we'd
+// rather show the user-typed "document name" textbox value instead.
+function isGenericUploadLabel(label) {
+  if (!label) return true;
+  const l = String(label).toLowerCase().trim();
+  if (!l) return true;
+  // "Additional File Upload", "File Upload", "Document Upload", "Photo Upload",
+  // "Image Upload", "Attachment Upload", plain "Upload", plain "File", etc.
+  if (/^(additional\s+|please\s+|new\s+|another\s+)?(file\s+|document\s+|attachment\s+|photo\s+|image\s+)?(upload|attachment|file|document)s?$/i.test(l)) {
+    return true;
+  }
+  // "Upload (a/the/your) (file/document/photo/image/attachment)"
+  if (/^upload(\s+(a|the|your))?\s+(file|document|attachment|photo|image)s?$/i.test(l)) {
+    return true;
+  }
+  return false;
+}
 
 export async function handler(event) {
   try {
@@ -114,7 +140,7 @@ async function loadFormData(formId, cleanEmail, apiKey, baseUrl) {
     return out;
   }
 
-  const useDocNamePattern = DOC_NAME_PATTERN_FORMS.has(String(formId));
+  const isOptInForm = DOC_NAME_PATTERN_FORMS.has(String(formId));
 
   for (const submission of submissions.list) {
     const answers = submission?.answers || {};
@@ -140,13 +166,17 @@ async function loadFormData(formId, cleanEmail, apiKey, baseUrl) {
 
       if (t === "control_email" && a.answer) {
         submissionEmail = String(a.answer).toLowerCase().trim();
-      } else if (useDocNamePattern && (t === "control_textbox" || t === "control_textarea")) {
+      } else if (t === "control_textbox" || t === "control_textarea") {
         const v = a.answer;
         if (v && String(v).trim()) lastTextValue = String(v).trim();
       } else if (t === "control_fileupload" && a.answer) {
-        // On a "doc name + upload" form, prefer the most recent textbox value;
-        // otherwise fall back to the upload field's own label.
-        const effectiveLabel = (useDocNamePattern && lastTextValue) ? lastTextValue : label;
+        // Use the recent textbox value as the document label if either:
+        //   (a) the form is opted into the doc-name pattern, OR
+        //   (b) the upload field's own label is generic (e.g. "Additional
+        //       File Upload"), in which case the textbox is almost certainly
+        //       where the parent typed the document name.
+        const useTextValue = lastTextValue && (isOptInForm || isGenericUploadLabel(label));
+        const effectiveLabel = useTextValue ? lastTextValue : label;
         const v = a.answer;
         const urls = Array.isArray(v) ? v.filter(Boolean) : [String(v)].filter(Boolean);
         for (const u of urls) {
