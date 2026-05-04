@@ -117,7 +117,13 @@ export async function handler(event) {
 
     // 3. Get portal content
     const portalRes = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id,itinerary,initial_planning_meeting,initial_planning_meeting_information,training_event,training_event_information,final_briefing,final_briefing_information,build_up_day,build_up_day_information,re_entry_workshop,re_entry_workshop_information,flight_departure_date,departure_airlines,departure_routing,return_flight_date,return_flight_airlines,return_flight_routing,payment_date_1,payment_amount_1,payment_date_2,payment_amount_2,payment_date_3,payment_amount_3,payment_date_4,payment_amount_4,payment_date_5,payment_amount_5,payment_date_6,payment_amount_6,payment_date_7,payment_amount_7,payment_date_8,payment_amount_8,payment_date_9,payment_amount_9,payment_date_10,payment_amount_10,student_manual,student_handbook,gear_list,fundraising_guide,fitness`,
+      // ============================================================
+      // === EDIT THIS LINE TO ADD A NEW PROPERTY ===
+      // To make a new HubSpot property visible to the portal, append its
+      // internal name to the comma-separated list below. See
+      // HOW_TO_ADD_FIELDS.md in the project root for a step-by-step guide.
+      // ============================================================
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id,itinerary,initial_planning_meeting,initial_planning_meeting_information,training_event,training_event_information,final_briefing,final_briefing_information,build_up_day,build_up_day_information,re_entry_workshop,re_entry_workshop_information,flight_departure_date,departure_airlines,departure_routing,return_flight_date,return_flight_airlines,return_flight_routing,payment_date_1,payment_amount_1,payment_date_2,payment_amount_2,payment_date_3,payment_amount_3,payment_date_4,payment_amount_4,payment_date_5,payment_amount_5,payment_date_6,payment_amount_6,payment_date_7,payment_amount_7,payment_date_8,payment_amount_8,payment_date_9,payment_amount_9,payment_date_10,payment_amount_10,student_manual,student_handbook,gear_list,fundraising_guide,fitness,insurance_overview_and_faqs,insurance_policy_wording`,
       { headers }
     );
 
