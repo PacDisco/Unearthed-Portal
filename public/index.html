@@ -986,11 +986,12 @@
     return `<div class="manual-grid">${cards.join("")}</div>`;
   }
 
-  // Treat semicolons in plain-text HubSpot fields as line breaks so the team
-  // can lay out long values (e.g. flight routings) across multiple lines
-  // directly in HubSpot. Only applied to fields that come through as plain
-  // text — HTML-blob fields (FAQs, Manuals, etc.) already render whatever
-  // breaks the rich-text editor produced.
+  // Treat semicolons in plain-text HubSpot fields as a paragraph break so the
+  // team can lay out long values (e.g. flight routings) with breathing room
+  // directly in HubSpot. Each ; becomes two <br>s — one to end the line and
+  // one to put a blank line between segments. Only applied to fields that
+  // come through as plain text — HTML-blob fields (FAQs, Manuals, etc.)
+  // already render whatever breaks the rich-text editor produced.
   function applyTextBreaks(text) {
     if (text == null) return "";
     const s = String(text);
@@ -999,7 +1000,7 @@
       .split(/\s*;\s*/)
       .map(part => part.trim())
       .filter(part => part.length > 0)
-      .join("<br>");
+      .join("<br><br>");
   }
 
   // Used to safely embed strings inside HTML attributes (e.g. data-description).
@@ -1180,7 +1181,7 @@
       { title: "INITIAL PLANNING MEETING", date: p.initial_planning_meeting, info: p.initial_planning_meeting_information },
       { title: "TRAINING EVENT", date: p.training_event, info: p.training_event_information },
       { title: "FINAL BRIEFING", date: p.final_briefing, info: p.final_briefing_information },
-      { title: "BUILD-UP DAY", date: p.build_up_day, info: p.build_up_day_information },
+      { title: "BUILD-UP DAY", date: p.buildup_day, info: p.buildup_day_information },
       { title: "RE-ENTRY WORKSHOP", date: p.re_entry_workshop, info: p.re_entry_workshop_information }
     ];
 
