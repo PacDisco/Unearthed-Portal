@@ -9,6 +9,10 @@ export async function handler(event) {
     }
 
     const OBJECT = "2-58156993";
+    // The "global" Portal record holds shared default content (insurance,
+    // FAQs, payment form URL, document upload form, etc.). Any property
+    // that's empty on a trip's record falls back to whatever is set here.
+    const GLOBAL_PORTAL_ID = "50506535214";
     const headers = {
       Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
       "Content-Type": "application/json"
@@ -115,17 +119,29 @@ export async function handler(event) {
 
     console.log("LABELS EXTRACTED:", labels);
 
-    // 3. Get portal content
-    const portalRes = await fetch(
-      // ============================================================
-      // === EDIT THIS LINE TO ADD A NEW PROPERTY ===
-      // To make a new HubSpot property visible to the portal, append its
-      // internal name to the comma-separated list below. See
-      // HOW_TO_ADD_FIELDS.md in the project root for a step-by-step guide.
-      // ============================================================
-      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id,itinerary,initial_planning_meeting,initial_planning_meeting_information,training_event,training_event_information,final_briefing,final_briefing_information,build_up_day,build_up_day_information,re_entry_workshop,re_entry_workshop_information,flight_departure_date,departure_airlines,departure_routing,return_flight_date,return_flight_airlines,return_flight_routing,payment_date_1,payment_amount_1,payment_date_2,payment_amount_2,payment_date_3,payment_amount_3,payment_date_4,payment_amount_4,payment_date_5,payment_amount_5,payment_date_6,payment_amount_6,payment_date_7,payment_amount_7,payment_date_8,payment_amount_8,payment_date_9,payment_amount_9,payment_date_10,payment_amount_10,student_manual,student_handbook,gear_list,fundraising_guide,fitness,insurance_overview_and_faqs,insurance_policy_wording`,
-      { headers }
-    );
+    // 3. Get portal content from BOTH the trip's record AND the global
+    //    record in parallel, then merge with trip-priority. Any property
+    //    that's empty (or null/undefined) on the trip record gets filled
+    //    in from the global record's value. This way you can set defaults
+    //    once on the global record and override per-trip whenever needed,
+    //    for ANY property in the list below — no per-field special casing
+    //    required in the frontend.
+    //
+    // ============================================================
+    // === EDIT THIS LINE TO ADD A NEW PROPERTY ===
+    // To make a new HubSpot property visible to the portal, append its
+    // internal name to the comma-separated list below. See
+    // HOW_TO_ADD_FIELDS.md in the project root for a step-by-step guide.
+    // ============================================================
+    const PORTAL_PROPERTIES = "portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,payment_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id,itinerary,initial_planning_meeting,initial_planning_meeting_information,training_event,training_event_information,final_briefing,final_briefing_information,build_up_day,build_up_day_information,re_entry_workshop,re_entry_workshop_information,flight_departure_date,departure_airlines,departure_routing,return_flight_date,return_flight_airlines,return_flight_routing,payment_date_1,payment_amount_1,payment_date_2,payment_amount_2,payment_date_3,payment_amount_3,payment_date_4,payment_amount_4,payment_date_5,payment_amount_5,payment_date_6,payment_amount_6,payment_date_7,payment_amount_7,payment_date_8,payment_amount_8,payment_date_9,payment_amount_9,payment_date_10,payment_amount_10,student_manual,student_handbook,gear_list,fundraising_guide,fitness,insurance_overview_and_faqs,insurance_policy_wording,documents_upload_form";
+
+    const tripPortalUrl   = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=${PORTAL_PROPERTIES}`;
+    const globalPortalUrl = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${GLOBAL_PORTAL_ID}?properties=${PORTAL_PROPERTIES}`;
+
+    const [portalRes, globalRes] = await Promise.all([
+      fetch(tripPortalUrl, { headers }),
+      fetch(globalPortalUrl, { headers }).catch(() => null)
+    ]);
 
     if (!portalRes.ok) {
       return {
@@ -138,14 +154,29 @@ export async function handler(event) {
     }
 
     const portal = await portalRes.json();
+    let globalProps = {};
+    if (globalRes && globalRes.ok) {
+      try {
+        const globalData = await globalRes.json();
+        globalProps = globalData.properties || {};
+      } catch (e) {
+        // Non-fatal — we just won't have global fallback values this request.
+        console.warn("Global portal parse warning:", e.message);
+      }
+    } else if (globalRes) {
+      console.warn("Global portal fetch non-OK:", globalRes.status);
+    }
 
-    console.log("PORTAL DATA:", JSON.stringify(portal, null, 2));
+    const tripProps = portal.properties || {};
+    const merged = mergeWithGlobalFallback(tripProps, globalProps);
+
+    console.log("PORTAL DATA (merged):", JSON.stringify(merged, null, 2));
 
     // 4. Return data
     return {
       statusCode: 200,
       body: JSON.stringify({
-        ...portal.properties,
+        ...merged,
         labels
       })
     };
@@ -160,4 +191,27 @@ export async function handler(event) {
       })
     };
   }
+}
+
+// Merge a trip record's properties on top of the global record's. For each
+// key, the trip's value wins if it's "non-empty" (not null/undefined and not
+// an empty/whitespace-only string); otherwise the global record's value is
+// used. Returns a flat object suitable for ...spread into the response.
+function mergeWithGlobalFallback(tripProps, globalProps) {
+  const out = {};
+  const allKeys = new Set([
+    ...Object.keys(tripProps || {}),
+    ...Object.keys(globalProps || {})
+  ]);
+  for (const k of allKeys) {
+    const t = tripProps ? tripProps[k] : undefined;
+    if (t !== null && t !== undefined && String(t).trim() !== "") {
+      out[k] = t;
+    } else if (globalProps && globalProps[k] !== undefined) {
+      out[k] = globalProps[k];
+    } else {
+      out[k] = null;
+    }
+  }
+  return out;
 }
