@@ -288,6 +288,95 @@
       color: #59a1aa;
     }
 
+    /* Trip-leader expandable application details */
+    .student-expand-btn {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: transparent;
+      border: 1px solid #5b7f9e;
+      color: #5b7f9e;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .student-expand-btn:hover {
+      background: #5b7f9e;
+      color: white;
+    }
+
+    .student-card-details {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #e2decf;
+    }
+
+    .application-detail-empty {
+      color: #999;
+      font-size: 12px;
+      letter-spacing: 0.4px;
+      padding: 8px 0;
+    }
+
+    .application-detail-meta {
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: #999;
+      margin-bottom: 12px;
+    }
+
+    .application-field {
+      padding: 8px 0;
+      border-bottom: 1px solid #f0ede6;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .application-field:last-child { border-bottom: none; }
+
+    .application-field-label {
+      color: #666;
+      font-size: 11px;
+      letter-spacing: 0.3px;
+      margin-bottom: 3px;
+    }
+
+    .application-field-value {
+      color: #231f20;
+      font-weight: 500;
+      word-break: break-word;
+    }
+
+    .application-field-value.is-yes {
+      color: #c0392b;
+      font-weight: 600;
+    }
+
+    .application-field-value.is-no {
+      color: #999;
+      font-weight: 400;
+    }
+
+    .application-field-file {
+      display: inline-block;
+      padding: 5px 12px;
+      background: #5b7f9e;
+      color: white !important;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      border-radius: 3px;
+      text-decoration: none !important;
+      margin-right: 4px;
+    }
+
+    .application-field-file:hover { opacity: 0.85; }
+
     /* EXPEDITION CARDS */
     .expedition-grid {
       display: grid;
@@ -885,6 +974,22 @@
     return `<div class="manual-grid">${cards.join("")}</div>`;
   }
 
+  // Treat semicolons in plain-text HubSpot fields as line breaks so the team
+  // can lay out long values (e.g. flight routings) across multiple lines
+  // directly in HubSpot. Only applied to fields that come through as plain
+  // text — HTML-blob fields (FAQs, Manuals, etc.) already render whatever
+  // breaks the rich-text editor produced.
+  function applyTextBreaks(text) {
+    if (text == null) return "";
+    const s = String(text);
+    if (s.indexOf(";") === -1) return s;
+    return s
+      .split(/\s*;\s*/)
+      .map(part => part.trim())
+      .filter(part => part.length > 0)
+      .join("<br>");
+  }
+
   // Used to safely embed strings inside HTML attributes (e.g. data-description).
   function attrEsc(s) {
     return String(s == null ? "" : s)
@@ -1055,7 +1160,7 @@
     const p = portalData;
 
     function info(val) {
-      return val ? `<div class="event-info">${val}</div>` : "";
+      return val ? `<div class="event-info">${applyTextBreaks(val)}</div>` : "";
     }
 
     const events = [
@@ -1092,7 +1197,8 @@
     const p = portalData;
 
     function detail(label, val) {
-      return `<div class="flight-detail"><strong>${label}:</strong> ${val || '<span class="tbc">TBC</span>'}</div>`;
+      const formatted = val ? applyTextBreaks(val) : '<span class="tbc">TBC</span>';
+      return `<div class="flight-detail"><strong>${label}:</strong> ${formatted}</div>`;
     }
 
     return `
@@ -1339,6 +1445,18 @@
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadStudentList(content);
+        return;
+      }
+
+      if (field === "trip_leader_information_content") {
+        // Trip Leader tab — same student listing as the teacher tab, but each
+        // card gets a "VIEW APPLICATION DETAILS" button that expands inline
+        // to show the student's medical/health/passport/dietary fields from
+        // their Jotform application submission.
+        content.innerHTML = portalData[field] || "";
+        content.style.opacity = 1;
+        styleLinksAsButtons();
+        await loadStudentList(content, { expandable: true });
         return;
       }
 
@@ -1593,7 +1711,9 @@
     }
   }
 
-  async function loadStudentList(content) {
+  async function loadStudentList(content, options = {}) {
+    const expandable = !!options.expandable;
+
     const loader = document.createElement("div");
     loader.id = "studentLoader";
     loader.style.cssText = "text-align:center; padding:30px; font-size:13px; color:#999; letter-spacing:1px;";
@@ -1630,6 +1750,16 @@
             `).join("")
           : "<div class='parent-item' style='color:#999;'>No parents linked</div>";
 
+        const expandBlock = expandable
+          ? `
+            <button class="student-expand-btn" type="button"
+                    onclick="toggleStudentExpand(this)">
+              VIEW APPLICATION DETAILS
+            </button>
+            <div class="student-card-details" data-email="${attrEsc(student.email || "")}" hidden></div>
+          `
+          : "";
+
         grid.innerHTML += `
           <div class="student-card">
             <h3>${student.name || "Unknown"}</h3>
@@ -1643,6 +1773,7 @@
               <div class="parent-label">PARENTS / GUARDIANS</div>
               ${parentsHtml}
             </div>
+            ${expandBlock}
           </div>
         `;
       });
@@ -1653,6 +1784,149 @@
       document.getElementById("studentLoader")?.remove();
       content.insertAdjacentHTML("beforeend", "<p style='color:#c0392b; font-size:13px; margin-top:20px;'>Error loading students.</p>");
     }
+  }
+
+  // Application form labels we want to surface in the trip-leader expansion.
+  // Stored as a Set so duplicate labels (the form has three "If you answered
+  // YES..." textareas in different sections) all get matched when we filter
+  // the backend's ordered field list.
+  const TRIP_LEADER_APPLICATION_FIELDS = new Set([
+    // Passport
+    "Passport Number",
+    "Country of Issue on Passport",
+    "Expiry Date",
+    "Passport Cover Page Photo",
+    // Vitals
+    "Height",
+    "Weight",
+    // Medical
+    "Respiratory Problems or Asthma?",
+    "Migraines or Headaches?",
+    "Skin Disorders?",
+    "Muscular-skeletel Problems?",
+    "Diabetes?",
+    "Claustrophobia or Motion Sickness?",
+    "Neurological problems or seizures? (i.e. autism, etc.)",
+    "Allergic reactions to Medications?",
+    "Any chronic medical conditions? (heart conditions, hearing loss, IBS, etc.)",
+    "Any chronic mental health conditions? (i.e. psychosis, bipolar disorder, etc.)",
+    "Have you ever had any suicidal ideation?",
+    "Have you ever self-harmed?",
+    "Do you currently take, or have been prescribed, any medications?",
+    "If you answered YES to any of the above, please provide more information",
+    // Health
+    "Have you attended a mental health practitioner, more than once, in the last 2 years?",
+    "Do you suffer from anxiety, depression, ADHD or other mood disorders?",
+    "Have you ever been, or are you currently being treated for substance abuse?",
+    "Do you have any physical, psychological, or chronic conditions that may impact your participation in physical activities?",
+    "Have you been admitted to hospital in the last 3 years?",
+    "Any non-food relate allergies or illnesses?",
+    "Does the student have objection to blood transfusions? (in case of medical emergency)",
+    "Does the student have objection to immunisations?",
+    // Swim
+    "Are you a confident Swimmer over 50m?",
+    // Dietary
+    "Dietary Restrictions or Preferences eg Vegetarian, celiac, gluten free?",
+    "Do you have any food allergies?"
+  ]);
+
+  // Click handler attached to each "VIEW APPLICATION DETAILS" button on a
+  // trip-leader student card. Lazily fetches the application data the first
+  // time the card is opened, then just toggles visibility on subsequent clicks.
+  async function toggleStudentExpand(button) {
+    const card = button.closest(".student-card");
+    if (!card) return;
+    const details = card.querySelector(".student-card-details");
+    if (!details) return;
+
+    const isOpen = !details.hasAttribute("hidden");
+    if (isOpen) {
+      details.setAttribute("hidden", "");
+      button.textContent = "VIEW APPLICATION DETAILS";
+      return;
+    }
+
+    button.textContent = "HIDE APPLICATION DETAILS";
+    details.removeAttribute("hidden");
+
+    if (details.dataset.loaded === "true") return;
+
+    const email = details.dataset.email || "";
+    if (!email) {
+      details.innerHTML = `<div class="application-detail-empty">No email on this student record.</div>`;
+      details.dataset.loaded = "true";
+      return;
+    }
+
+    details.innerHTML = `<div class="application-detail-empty">LOADING APPLICATION DETAILS…</div>`;
+
+    try {
+      const res = await fetch(`/.netlify/functions/get-application-data?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      details.innerHTML = renderApplicationDetails(data);
+    } catch (err) {
+      console.error("Application data fetch error:", err);
+      details.innerHTML = `<div class="application-detail-empty">Could not load application details.</div>`;
+    }
+    details.dataset.loaded = "true";
+  }
+
+  function renderApplicationDetails(data) {
+    if (!data || data.error) {
+      return `<div class="application-detail-empty">Could not load application details${data?.error ? `: ${attrEsc(data.error)}` : ""}.</div>`;
+    }
+    if (!data.found) {
+      return `<div class="application-detail-empty">No application form submission found for this email.</div>`;
+    }
+
+    const all = Array.isArray(data.fields) ? data.fields : [];
+    const fields = all.filter(f => TRIP_LEADER_APPLICATION_FIELDS.has(f.label));
+
+    let metaHtml = "";
+    if (data.submittedAt) {
+      const d = new Date(data.submittedAt);
+      if (!isNaN(d.getTime())) {
+        const when = d.toLocaleDateString("en-NZ", { year: "numeric", month: "short", day: "numeric" });
+        metaHtml = `<div class="application-detail-meta">SUBMITTED ${attrEsc(when.toUpperCase())}</div>`;
+      }
+    }
+
+    if (fields.length === 0) {
+      return metaHtml + `<div class="application-detail-empty">No relevant fields found in this submission.</div>`;
+    }
+
+    return metaHtml + fields.map(renderApplicationField).join("");
+  }
+
+  function renderApplicationField(field) {
+    const label = field.label || "";
+    let valueHtml = "";
+
+    if ((field.type || "").toLowerCase() === "control_fileupload" && Array.isArray(field.value)) {
+      valueHtml = field.value.map(url =>
+        `<a href="${attrEsc(url)}" target="_blank" rel="noopener" class="application-field-file">VIEW</a>`
+      ).join("");
+      if (!valueHtml) valueHtml = `<span class="application-field-value is-no">—</span>`;
+      return `
+        <div class="application-field">
+          <div class="application-field-label">${attrEsc(label)}</div>
+          <div class="application-field-value">${valueHtml}</div>
+        </div>
+      `;
+    }
+
+    const raw = field.value == null ? "" : String(field.value).trim();
+    const isYes = /^yes$/i.test(raw);
+    const isNo = /^no$/i.test(raw);
+    const cls = isYes ? "is-yes" : (isNo ? "is-no" : "");
+    valueHtml = `<span class="application-field-value ${cls}">${attrEsc(raw || "—")}</span>`;
+
+    return `
+      <div class="application-field">
+        <div class="application-field-label">${attrEsc(label)}</div>
+        <div class="application-field-value">${valueHtml}</div>
+      </div>
+    `;
   }
 
   function styleLinksAsButtons() {
