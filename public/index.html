@@ -92,6 +92,80 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
 
+    /* MESSAGE BOARD */
+    .tile {
+      position: relative;
+    }
+
+    .tile-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #c0392b;
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      line-height: 1;
+    }
+
+    .message-board-alert {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #fdf0ef;
+      border: 1px solid #f1c2bd;
+      border-left: 4px solid #c0392b;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #231f20;
+      transition: opacity 0.2s ease;
+    }
+
+    .message-board-alert:hover {
+      opacity: 0.85;
+    }
+
+    .message-board-alert .mb-icon {
+      font-size: 18px;
+    }
+
+    .message-board-alert strong {
+      color: #c0392b;
+    }
+
+    .message-board-alert .mb-arrow {
+      margin-left: auto;
+      color: #c0392b;
+      font-weight: 600;
+      letter-spacing: 1px;
+      font-size: 11px;
+    }
+
+    .message-board-content {
+      line-height: 1.7;
+    }
+
+    .message-board-meta {
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      color: #999;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+
+    .message-board-empty {
+      color: #999;
+      font-size: 13px;
+      text-align: center;
+      padding: 30px 10px;
+      letter-spacing: 0.5px;
+    }
+
     #content {
       max-width: 900px;
       margin: 20px auto 100px;
@@ -911,6 +985,11 @@
     EXPEDITION OVERVIEW
   </div>
 
+  <div id="messageBoardTile" class="tile" onclick="loadSection('message_board')">
+    MESSAGE BOARD
+    <span id="messageBoardBadge" class="tile-badge" style="display:none;">NEW</span>
+  </div>
+
   <div class="tile" onclick="loadSection('destination_overview_content')">
     FLIGHTS & INSURANCE
   </div>
@@ -1007,6 +1086,50 @@
       return `<div class="manuals-empty">No resources have been added yet.</div>`;
     }
     return `<div class="manual-grid">${cards.join("")}</div>`;
+  }
+
+  // ----- Message board -----
+  // Track per-portal "last seen" timestamp in localStorage. If
+  // portalData.message_board_updated_at is newer than that, the user has
+  // an unseen notice → we show a NEW badge on the tile and an alert banner
+  // on the Expedition Overview.
+  function messageBoardLastSeenKey() {
+    return `mb_last_seen_${portalData.hs_object_id || ""}`;
+  }
+
+  function hasUnseenMessage() {
+    const updated = (portalData.message_board_updated_at || "").trim();
+    if (!updated) return false;
+    const board = (portalData.message_board || "").trim();
+    if (!board) return false;
+    let lastSeen;
+    try { lastSeen = localStorage.getItem(messageBoardLastSeenKey()); }
+    catch (e) { lastSeen = null; }
+    const updatedTime = new Date(updated).getTime();
+    const lastSeenTime = lastSeen ? new Date(lastSeen).getTime() : 0;
+    if (!isFinite(updatedTime)) return false;
+    return updatedTime > lastSeenTime;
+  }
+
+  function applyMessageBoardBadge() {
+    const badge = document.getElementById("messageBoardBadge");
+    if (!badge) return;
+    badge.style.display = hasUnseenMessage() ? "inline-block" : "none";
+  }
+
+  function markMessageBoardSeen() {
+    try { localStorage.setItem(messageBoardLastSeenKey(), new Date().toISOString()); }
+    catch (e) { /* ignore */ }
+    applyMessageBoardBadge();
+  }
+
+  function renderMessageBoardAlert() {
+    if (!hasUnseenMessage()) return "";
+    return `<div class="message-board-alert" onclick="loadSection('message_board')">
+      <span class="mb-icon">📢</span>
+      <div><strong>New notice posted</strong> — click to view the message board</div>
+      <span class="mb-arrow">VIEW &rsaquo;</span>
+    </div>`;
   }
 
   // Treat semicolons in plain-text HubSpot fields as a paragraph break so the
@@ -1148,6 +1271,7 @@
 
       applyVisibility(portalData.labels);
       assignTileColors();
+      applyMessageBoardBadge();
       loadSection("trip_information_content");
       showInstallPrompt();
 
@@ -1465,10 +1589,32 @@
     setTimeout(async () => {
 
       if (field === "trip_information_content") {
-        content.innerHTML = loadExpeditionOverview();
+        // Inject a "new notice" banner above the expedition cards if there
+        // is an unseen message-board update. Tap-to-go-to-board.
+        content.innerHTML = renderMessageBoardAlert() + loadExpeditionOverview();
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadTeacherList(content);
+        return;
+      }
+
+      if (field === "message_board") {
+        const board = (portalData.message_board || "").trim();
+        const updated = (portalData.message_board_updated_at || "").trim();
+        let metaHtml = "";
+        if (updated) {
+          const d = new Date(updated);
+          if (!isNaN(d.getTime())) {
+            const when = d.toLocaleDateString("en-NZ", { year: "numeric", month: "short", day: "numeric" });
+            metaHtml = `<div class="message-board-meta">LAST UPDATED ${attrEsc(when.toUpperCase())}</div>`;
+          }
+        }
+        content.innerHTML = board
+          ? `${metaHtml}<div class="message-board-content">${board}</div>`
+          : `<div class="message-board-empty">No messages have been posted yet.</div>`;
+        content.style.opacity = 1;
+        styleLinksAsButtons();
+        markMessageBoardSeen();
         return;
       }
 
