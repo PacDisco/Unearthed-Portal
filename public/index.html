@@ -1271,30 +1271,38 @@
   async function loadPayments() {
     const p = portalData;
 
-    // Kick off both global-content and paid-payments fetches in parallel.
-    // get-insurance gives us payments_information_content + payment_form_url.
-    // get-paid-payments gives us each row's paid status from the contact's most
-    // recently created Deal (matched by sequence: deal.payment_N → schedule row N).
-    const insurancePromise = fetch(`/.netlify/functions/get-insurance`)
-      .then(r => r.json())
-      .catch(err => { console.error("Payment global fetch error:", err); return {}; });
-
+    // payment_form_url and payments_information_content are now merged into
+    // portalData by portal.js (trip record overrides global record). So we
+    // can read them directly from portalData; the get-insurance fallback is
+    // only kept as a safety net.
     const paidPromise = fetch(`/.netlify/functions/get-paid-payments?email=${encodeURIComponent(email)}`)
       .then(r => r.json())
       .catch(err => { console.error("Paid payments fetch error:", err); return { payments: [] }; });
 
-    const [insuranceData, paidData] = await Promise.all([insurancePromise, paidPromise]);
+    let paymentFormUrl = (portalData.payment_form_url || portalData.payments_form_url || "").trim() || null;
+    let paymentsInfo  = (portalData.payments_information_content || "").trim();
+
+    if (!paymentFormUrl || !paymentsInfo) {
+      try {
+        const r = await fetch(`/.netlify/functions/get-insurance`);
+        const d = await r.json();
+        if (!paymentFormUrl && d.payment_form_url) paymentFormUrl = String(d.payment_form_url).trim();
+        if (!paymentsInfo  && d.payments_information_content) paymentsInfo = String(d.payments_information_content).trim();
+      } catch (err) {
+        console.error("Payment global fetch error:", err);
+      }
+    }
+
+    const paidData = await paidPromise;
 
     let btnHtml = "";
     let infoHtml = "";
-    let paymentFormUrl = null;
 
-    if (insuranceData.payments_information_content) {
-      infoHtml = `<div class="payments-header">${insuranceData.payments_information_content}</div>`;
+    if (paymentsInfo) {
+      infoHtml = `<div class="payments-header">${paymentsInfo}</div>`;
     }
 
-    if (insuranceData.payment_form_url) {
-      paymentFormUrl = insuranceData.payment_form_url;
+    if (paymentFormUrl) {
       btnHtml = `<a href="${paymentFormUrl}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
     }
 
@@ -1537,10 +1545,17 @@
     let docsError = null;
 
     try {
-      // 1. Get the configured form URL(s) from the global Portal record.
-      const insRes = await fetch(`/.netlify/functions/get-insurance`);
-      const insData = await insRes.json();
-      const raw = insData?.documents_upload_form || "";
+      // 1. Get the configured form URL(s). Prefer the trip's portalData
+      //    (already merged with the global record via portal.js), fall back
+      //    to get-insurance only if portalData has nothing.
+      let raw = (portalData.documents_upload_form || "").trim();
+      if (!raw) {
+        try {
+          const insRes = await fetch(`/.netlify/functions/get-insurance`);
+          const insData = await insRes.json();
+          raw = insData?.documents_upload_form || "";
+        } catch (_) { /* fall through with empty raw */ }
+      }
 
       formInputs = parseFormInputs(raw);
 
