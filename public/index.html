@@ -1242,14 +1242,14 @@
 
     // Prefer per-trip insurance fields (set on the trip's portal record)
     // when populated, fall back to the global record's shared values.
-    let overview = (portalData.insurance_overview_and_faqs || "").trim();
+    let overview = (portalData.insurance_overview__faqs || "").trim();
     let wording  = (portalData.insurance_policy_wording   || "").trim();
 
     if (!overview || !wording) {
       try {
         const res = await fetch(`/.netlify/functions/get-insurance`);
         const data = await res.json();
-        if (!overview && data.insurance_overview_and_faqs) overview = String(data.insurance_overview_and_faqs).trim();
+        if (!overview && data.insurance_overview__faqs) overview = String(data.insurance_overview__faqs).trim();
         if (!wording  && data.insurance_policy_wording)    wording  = String(data.insurance_policy_wording).trim();
       } catch (err) {
         // Swallow — we'll show TBC for whichever side is still empty.
