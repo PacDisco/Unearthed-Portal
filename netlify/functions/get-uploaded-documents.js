@@ -170,13 +170,25 @@ async function loadFormData(formId, cleanEmail, apiKey, baseUrl) {
         const v = a.answer;
         if (v && String(v).trim()) lastTextValue = String(v).trim();
       } else if (t === "control_fileupload" && a.answer) {
-        // Use the recent textbox value as the document label if either:
-        //   (a) the form is opted into the doc-name pattern, OR
-        //   (b) the upload field's own label is generic (e.g. "Additional
-        //       File Upload"), in which case the textbox is almost certainly
-        //       where the parent typed the document name.
-        const useTextValue = lastTextValue && (isOptInForm || isGenericUploadLabel(label));
-        const effectiveLabel = useTextValue ? lastTextValue : label;
+        // Decide what label to attach to this upload's documents.
+        //
+        // Order of preference:
+        //   1. If a "Document Name" textbox came right before, use that.
+        //   2. Else if the upload field has a SPECIFIC label (e.g. "Passport"),
+        //      use that.
+        //   3. Else (generic label like "Additional file upload" with nothing
+        //      typed in the textbox), return null so the frontend can hide
+        //      the heading entirely instead of showing a meaningless one.
+        const generic = isGenericUploadLabel(label);
+        let effectiveLabel;
+        if (lastTextValue && (isOptInForm || generic)) {
+          effectiveLabel = lastTextValue;
+        } else if (generic) {
+          effectiveLabel = null;
+        } else {
+          effectiveLabel = label;
+        }
+
         const v = a.answer;
         const urls = Array.isArray(v) ? v.filter(Boolean) : [String(v)].filter(Boolean);
         for (const u of urls) {
@@ -203,7 +215,11 @@ async function loadFormData(formId, cleanEmail, apiKey, baseUrl) {
         uploadedAt: submission.created_at || null,
         fieldLabel: f.fieldLabel,
         filename,
-        url: f.url
+        // Route the file through our get-document proxy so the parent
+        // doesn't need a Jotform login to view it. The original Jotform
+        // URL is encoded as a query param; the proxy validates the host,
+        // appends our JOTFORM_API_KEY server-side, and streams the bytes.
+        url: `/.netlify/functions/get-document?url=${encodeURIComponent(f.url)}`
       });
     }
   }
