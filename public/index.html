@@ -482,6 +482,28 @@
       text-decoration: none;
     }
 
+    /* Trip Leader variant — same card frame, different accent. Shows only
+       name + bio (no email/phone exposed in the parent view). */
+    .teacher-card--trip-leader {
+      border-top-color: #d6a380;
+    }
+
+    .teacher-card--trip-leader .teacher-card-role {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #d6a380;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    .teacher-card--trip-leader .teacher-bio {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #444;
+      line-height: 1.55;
+    }
+
     /* FLIGHTS & INSURANCE */
     .flights-grid {
       display: grid;
@@ -1714,7 +1736,10 @@
       const portalId = portalData.hs_object_id;
       const res = await fetch(`/.netlify/functions/get-teachers?portalId=${portalId}`);
       const data = await res.json();
-      if (data.error || !data.teachers?.length) return;
+
+      const teachers    = Array.isArray(data.teachers)    ? data.teachers    : [];
+      const tripLeaders = Array.isArray(data.tripLeaders) ? data.tripLeaders : [];
+      if (data.error || (teachers.length === 0 && tripLeaders.length === 0)) return;
 
       const section = document.createElement("div");
       section.className = "teacher-section";
@@ -1723,14 +1748,27 @@
       const grid = document.createElement("div");
       grid.className = "teacher-grid";
 
-      data.teachers.forEach(t => {
+      // Teachers — full contact card (name + email + phone)
+      teachers.forEach(t => {
         grid.innerHTML += `
           <div class="teacher-card">
-            <h4>${t.name || "Unknown"}</h4>
+            <h4>${attrEsc(t.name || "Unknown")}</h4>
             <div class="teacher-contact">
-              ${t.email ? `<a href="mailto:${t.email}">${t.email}</a><br>` : ""}
-              ${t.phone ? `<a href="tel:${t.phone}">${t.phone}</a>` : ""}
+              ${t.email ? `<a href="mailto:${attrEsc(t.email)}">${attrEsc(t.email)}</a><br>` : ""}
+              ${t.phone ? `<a href="tel:${attrEsc(t.phone)}">${attrEsc(t.phone)}</a>` : ""}
             </div>
+          </div>
+        `;
+      });
+
+      // Trip leaders — name + bio only (no email/phone exposed in this view)
+      tripLeaders.forEach(l => {
+        const bioHtml = l.bio ? applyTextBreaks(l.bio) : "";
+        grid.innerHTML += `
+          <div class="teacher-card teacher-card--trip-leader">
+            <div class="teacher-card-role">TRIP LEADER</div>
+            <h4>${attrEsc(l.name || "Unknown")}</h4>
+            ${bioHtml ? `<div class="teacher-bio">${bioHtml}</div>` : ""}
           </div>
         `;
       });
