@@ -937,19 +937,31 @@
 
   const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-sand"];
 
-  // ----- Manuals / Resources tab -----
-  // The Manuals tile renders one card per resource below.
-  // To add a new resource: create a single-line property on the Portal custom
-  // object (snake_case is HubSpot's default), populate with a URL, and add an
-  // entry here. Empty/missing properties are auto-hidden in the UI.
-  // To rename or fix a property, change the `prop` value to match HubSpot's
-  // internal name (Settings → Properties → the property → "Internal name").
+  // ============================================================
+  // === EDIT THIS LIST TO ADD A MANUAL / RESOURCE CARD ===
+  //
+  // Each entry below renders one card on the "Manuals, Handbooks and
+  // Resources" tab. The cards auto-hide if the property is empty on the
+  // current trip's Portal record, so it's safe to add entries before
+  // they're populated.
+  //
+  //   - `label` is the heading shown on the card (any wording you like).
+  //   - `prop`  must match the property's INTERNAL NAME in HubSpot
+  //             (Settings → Properties → click the property → "Internal name").
+  //
+  // ⚠ Don't forget to also add `prop` to the properties list in
+  //   netlify/functions/portal.js — otherwise the value is never fetched.
+  //
+  // See HOW_TO_ADD_FIELDS.md in the project root for the full guide.
+  // ============================================================
   const MANUAL_FIELDS = [
     { label: "Student Manual",    prop: "student_manual" },
     { label: "Student Handbook",  prop: "student_handbook" },
     { label: "Gear List",         prop: "gear_list" },
     { label: "Fundraising Guide", prop: "fundraising_guide" },
     { label: "Fitness",           prop: "fitness" }
+    // Add new entries here, e.g.:
+    //   { label: "Pre-Trip Checklist", prop: "pre_trip_checklist" }
   ];
 
   function renderManualsCards() {
@@ -1224,33 +1236,36 @@
   }
 
   async function loadInsurance() {
-    try {
-      const res = await fetch(`/.netlify/functions/get-insurance`);
-      const data = await res.json();
-      const el = document.getElementById("insuranceContent");
-      if (!el) return;
+    const el = document.getElementById("insuranceContent");
+    if (!el) return;
 
-      if (data.error) {
-        el.innerHTML = `<span style="color:#999; font-size:13px;">Insurance details unavailable.</span>`;
-        return;
+    // Prefer per-trip insurance fields (set on the trip's portal record)
+    // when populated, fall back to the global record's shared values.
+    let overview = (portalData.insurance_overview_and_faqs || "").trim();
+    let wording  = (portalData.insurance_policy_wording   || "").trim();
+
+    if (!overview || !wording) {
+      try {
+        const res = await fetch(`/.netlify/functions/get-insurance`);
+        const data = await res.json();
+        if (!overview && data.insurance_overview_and_faqs) overview = String(data.insurance_overview_and_faqs).trim();
+        if (!wording  && data.insurance_policy_wording)    wording  = String(data.insurance_policy_wording).trim();
+      } catch (err) {
+        // Swallow — we'll show TBC for whichever side is still empty.
       }
-
-      const links = [];
-      if (data.insurance_overview_and_faqs) {
-        links.push(`<a href="${data.insurance_overview_and_faqs}" target="_blank" class="flight-link">INSURANCE OVERVIEW & FAQs</a>`);
-      }
-      if (data.insurance_policy_wording) {
-        links.push(`<a href="${data.insurance_policy_wording}" target="_blank" class="flight-link">POLICY WORDING</a>`);
-      }
-
-      el.innerHTML = links.length
-        ? `<div style="margin-top:8px;">${links.join("")}</div>`
-        : `<span class="tbc">TBC</span>`;
-
-    } catch (err) {
-      const el = document.getElementById("insuranceContent");
-      if (el) el.innerHTML = `<span style="color:#999; font-size:13px;">Insurance details unavailable.</span>`;
     }
+
+    const links = [];
+    if (overview) {
+      links.push(`<a href="${overview}" target="_blank" class="flight-link">INSURANCE OVERVIEW & FAQs</a>`);
+    }
+    if (wording) {
+      links.push(`<a href="${wording}" target="_blank" class="flight-link">POLICY WORDING</a>`);
+    }
+
+    el.innerHTML = links.length
+      ? `<div style="margin-top:8px;">${links.join("")}</div>`
+      : `<span class="tbc">TBC</span>`;
   }
 
   async function loadPayments() {
