@@ -1090,24 +1090,38 @@
 
   // ----- Message board -----
   // Track per-portal "last seen" timestamp in localStorage. If
-  // portalData.message_board_updated_at is newer than that, the user has
+  // portalData.message_board_posted_at is newer than that, the user has
   // an unseen notice → we show a NEW badge on the tile and an alert banner
   // on the Expedition Overview.
   function messageBoardLastSeenKey() {
     return `mb_last_seen_${portalData.hs_object_id || ""}`;
   }
 
+  // Parses both ISO strings ("2026-05-04T00:00:00Z") and millisecond
+  // timestamps ("1714780800000") — HubSpot date properties return the
+  // latter, while localStorage timestamps we write ourselves are the former.
+  function parseFlexibleTime(value) {
+    if (value == null) return null;
+    const s = String(value).trim();
+    if (!s) return null;
+    // Pure-numeric → treat as milliseconds since epoch (HubSpot date format).
+    if (/^-?\d+$/.test(s)) {
+      const n = parseInt(s, 10);
+      if (Number.isFinite(n)) return n;
+    }
+    const t = new Date(s).getTime();
+    return isFinite(t) ? t : null;
+  }
+
   function hasUnseenMessage() {
-    const updated = (portalData.message_board_updated_at || "").trim();
-    if (!updated) return false;
     const board = (portalData.message_board || "").trim();
     if (!board) return false;
+    const updatedTime = parseFlexibleTime(portalData.message_board_posted_at);
+    if (updatedTime == null) return false;
     let lastSeen;
     try { lastSeen = localStorage.getItem(messageBoardLastSeenKey()); }
     catch (e) { lastSeen = null; }
-    const updatedTime = new Date(updated).getTime();
-    const lastSeenTime = lastSeen ? new Date(lastSeen).getTime() : 0;
-    if (!isFinite(updatedTime)) return false;
+    const lastSeenTime = parseFlexibleTime(lastSeen) || 0;
     return updatedTime > lastSeenTime;
   }
 
@@ -1600,10 +1614,10 @@
 
       if (field === "message_board") {
         const board = (portalData.message_board || "").trim();
-        const updated = (portalData.message_board_updated_at || "").trim();
+        const updatedTime = parseFlexibleTime(portalData.message_board_posted_at);
         let metaHtml = "";
-        if (updated) {
-          const d = new Date(updated);
+        if (updatedTime != null) {
+          const d = new Date(updatedTime);
           if (!isNaN(d.getTime())) {
             const when = d.toLocaleDateString("en-NZ", { year: "numeric", month: "short", day: "numeric" });
             metaHtml = `<div class="message-board-meta">LAST UPDATED ${attrEsc(when.toUpperCase())}</div>`;
