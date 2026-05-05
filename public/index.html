@@ -299,6 +299,17 @@
       font-weight: 600;
     }
 
+    .student-card-photo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+      margin: 0 auto 14px;
+      background: #e2decf;
+      border: 1px solid #e2decf;
+    }
+
     .student-card .contact-info {
       font-size: 12px;
       color: #666;
@@ -1990,12 +2001,17 @@
           `
           : "";
 
+        const photoHtml = student.portraitUrl
+          ? `<img class="student-card-photo" src="${attrEsc(student.portraitUrl)}" alt="${attrEsc(student.name || "Student")}" loading="lazy" onerror="this.style.display='none';">`
+          : "";
+
         grid.innerHTML += `
           <div class="student-card">
-            <h3>${student.name || "Unknown"}</h3>
+            ${photoHtml}
+            <h3>${attrEsc(student.name || "Unknown")}</h3>
             <div class="contact-info">
-              ${student.email ? `<a href="mailto:${student.email}">${student.email}</a><br>` : ""}
-              ${student.phone ? `<a href="tel:${student.phone}">${student.phone}</a>` : ""}
+              ${student.email ? `<a href="mailto:${attrEsc(student.email)}">${attrEsc(student.email)}</a><br>` : ""}
+              ${student.phone ? `<a href="tel:${attrEsc(student.phone)}">${attrEsc(student.phone)}</a>` : ""}
             </div>
             <div class="paid-badge">TOTAL PAID: $${student.totalPaid.toLocaleString()}</div>
             <div class="payments-list">${paymentsHtml}</div>
