@@ -84,8 +84,11 @@ export async function handler(event) {
     const studentsData = await studentsRes.json();
 
     // 4. For each student, resolve parent contacts and deal-side payments
-    //    in parallel.
-    const students = await Promise.all(
+    //    in parallel. Also pull a single email→portrait map from the Jotform
+    //    application form so each card can show a photo.
+    const portraitsPromise = loadPortraitsByEmail();
+
+    const studentsRaw = await Promise.all(
       (studentsData.results || []).map(async (student) => {
         const [parents, paymentInfo] = await Promise.all([
           fetchParents(student.id, headers),
@@ -104,6 +107,20 @@ export async function handler(event) {
         };
       })
     );
+
+    const portraitsByEmail = await portraitsPromise;
+    const students = studentsRaw.map(s => {
+      const key = (s.email || "").toLowerCase().trim();
+      const rawUrl = key ? portraitsByEmail.get(key) : null;
+      return {
+        ...s,
+        // Route the portrait through our get-document proxy so it loads in
+        // the parent's browser without a Jotform login. Null when no match.
+        portraitUrl: rawUrl
+          ? `/.netlify/functions/get-document?url=${encodeURIComponent(rawUrl)}`
+          : null
+      };
+    });
 
     // Sort students alphabetically
     students.sort((a, b) => a.name.localeCompare(b.name));
@@ -228,6 +245,76 @@ async function fetchStudentPayments(contactId, headers) {
     payments,
     dealAmount: deal.properties?.amount ? parseFloat(deal.properties.amount) : null
   };
+}
+
+// Builds an email → portrait-photo URL map by walking every submission of the
+// Jotform application form (id from JOTFORM_APPLICATION_FORM_ID env var,
+// default 251396787451873). For each submission we look at the email-control
+// answer and any control_fileupload whose label mentions "portrait" — if both
+// are present, we record the (lowercased) email → first photo URL.
+//
+// Failures are swallowed silently: if the API key is missing or the call
+// fails, we just return an empty map and student cards render without photos.
+async function loadPortraitsByEmail() {
+  const empty = new Map();
+  if (!process.env.JOTFORM_API_KEY) return empty;
+
+  const formId = (process.env.JOTFORM_APPLICATION_FORM_ID || "251396787451873").toString();
+  const apiKey = process.env.JOTFORM_API_KEY;
+  const baseUrl = (process.env.JOTFORM_BASE_URL || "https://api.jotform.com").replace(/\/+$/, "");
+
+  let allSubmissions = [];
+  try {
+    let offset = 0;
+    while (true) {
+      const url = `${baseUrl}/form/${encodeURIComponent(formId)}/submissions` +
+        `?apiKey=${encodeURIComponent(apiKey)}&limit=1000&offset=${offset}`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) return empty;
+      const data = await res.json();
+      const page = Array.isArray(data?.content) ? data.content : [];
+      allSubmissions.push(...page);
+      if (page.length < 1000) break;
+      offset += 1000;
+      if (offset >= 5000) break; // safety net
+    }
+  } catch (_) {
+    return empty;
+  }
+
+  // Sort ascending by created_at so when we write into the map below, the
+  // last value to win is the most recent submission for each email.
+  allSubmissions.sort((a, b) => {
+    const ta = new Date(a?.created_at || 0).getTime();
+    const tb = new Date(b?.created_at || 0).getTime();
+    return ta - tb;
+  });
+
+  const out = new Map();
+  for (const submission of allSubmissions) {
+    const answers = submission?.answers || {};
+    let email = null;
+    let portrait = null;
+
+    for (const k of Object.keys(answers)) {
+      const a = answers[k] || {};
+      const t = String(a.type || "").toLowerCase();
+      if (!email && t === "control_email" && a.answer) {
+        email = String(a.answer).toLowerCase().trim();
+      } else if (!portrait && t === "control_fileupload" && a.answer) {
+        const text = String(a.text || "").toLowerCase();
+        if (/portrait/.test(text)) {
+          const v = a.answer;
+          if (Array.isArray(v) && v.length > 0) portrait = String(v[0]);
+          else if (typeof v === "string" && v) portrait = v;
+        }
+      }
+    }
+
+    if (email && portrait) out.set(email, portrait);
+  }
+
+  return out;
 }
 
 // Pulls the leading numeric value out of a deal's payment_N string, which is
