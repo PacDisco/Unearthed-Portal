@@ -2103,12 +2103,17 @@
 
         let expandBlock = "";
         if (expandable) {
+          // Trip leader: button opens the same popup as the teacher tab,
+          // but with the focused medical/health/passport/dietary whitelist
+          // applied so trip leaders see the same compact "what they need
+          // to know" view they had before.
           expandBlock = `
             <button class="student-expand-btn" type="button"
-                    onclick="toggleStudentExpand(this)">
+                    data-email="${attrEsc(student.email || "")}"
+                    data-student-name="${attrEsc(student.name || "")}"
+                    onclick="openApplicationModal(this.dataset.email, this.dataset.studentName, true)">
               VIEW APPLICATION DETAILS
             </button>
-            <div class="student-card-details" data-email="${attrEsc(student.email || "")}" hidden></div>
           `;
         } else if (showAppModal) {
           // Teacher tab: opens a modal with the FULL application submission.
@@ -2301,12 +2306,14 @@
   // submission in a modal. Reuses the same get-application-data endpoint
   // as the Trip Leader inline expand, but renders the full ordered list of
   // fields rather than the medical-focused whitelist.
-  async function openApplicationModal(email, name) {
+  async function openApplicationModal(email, name, tripLeaderOnly) {
     const modal = document.getElementById("appModal");
     const subject = document.getElementById("appModalSubject");
     const body = document.getElementById("appModalBody");
+    const titleEl = document.getElementById("appModalTitle");
     if (!modal || !body) return;
 
+    if (titleEl) titleEl.textContent = tripLeaderOnly ? "APPLICATION DETAILS" : "APPLICATION INFORMATION";
     if (subject) subject.textContent = name || "";
     body.innerHTML = `<div class="application-detail-empty">LOADING APPLICATION…</div>`;
     modal.hidden = false;
@@ -2319,11 +2326,26 @@
 
     try {
       const res = await fetch(`/.netlify/functions/get-application-data?email=${encodeURIComponent(email)}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        let detail = `HTTP ${res.status}`;
+        if (text) {
+          // Try to pull a JSON error message; fall back to first 200 chars.
+          try {
+            const j = JSON.parse(text);
+            if (j && (j.error || j.details)) detail += `: ${j.error || ""}${j.details ? ` — ${j.details}` : ""}`;
+          } catch (_) {
+            detail += `: ${text.slice(0, 200)}`;
+          }
+        }
+        body.innerHTML = `<div class="application-detail-empty">Could not load application details.<br><small style="color:#999; font-size:11px;">${attrEsc(detail)}</small></div>`;
+        return;
+      }
       const data = await res.json();
-      body.innerHTML = renderFullApplicationDetails(data);
+      body.innerHTML = renderFullApplicationDetails(data, !!tripLeaderOnly);
     } catch (err) {
       console.error("Application modal fetch error:", err);
-      body.innerHTML = `<div class="application-detail-empty">Could not load application details.</div>`;
+      body.innerHTML = `<div class="application-detail-empty">Could not load application details.<br><small style="color:#999; font-size:11px;">${attrEsc(err.message || String(err))}</small></div>`;
     }
   }
 
@@ -2341,7 +2363,7 @@
     }
   });
 
-  function renderFullApplicationDetails(data) {
+  function renderFullApplicationDetails(data, tripLeaderOnly) {
     if (!data || data.error) {
       return `<div class="application-detail-empty">Could not load application details${data?.error ? `: ${attrEsc(data.error)}` : ""}.</div>`;
     }
@@ -2349,7 +2371,12 @@
       return `<div class="application-detail-empty">No application form submission found for this email.</div>`;
     }
 
-    const fields = Array.isArray(data.fields) ? data.fields : [];
+    let fields = Array.isArray(data.fields) ? data.fields : [];
+    if (tripLeaderOnly) {
+      // Trip leader view: only the medical / health / passport / dietary
+      // whitelist (defined in TRIP_LEADER_APPLICATION_FIELDS near the top).
+      fields = fields.filter(f => TRIP_LEADER_APPLICATION_FIELDS.has(f.label));
+    }
 
     let metaHtml = "";
     if (data.submittedAt) {
@@ -2361,7 +2388,7 @@
     }
 
     if (fields.length === 0) {
-      return metaHtml + `<div class="application-detail-empty">No fields in this submission.</div>`;
+      return metaHtml + `<div class="application-detail-empty">No relevant fields found in this submission.</div>`;
     }
 
     return metaHtml + fields.map(renderFullApplicationField).join("");
