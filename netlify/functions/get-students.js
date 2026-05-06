@@ -57,8 +57,13 @@ export async function handler(event) {
       };
     }
 
-    // 3. Batch-read student contact basic info (name/email/phone only;
-    //    payment data lives on the deal, not here).
+    // 3. Batch-read student contact basic info. Payment data lives on the
+    //    associated deal (not here), but we DO pull two contact-level fields
+    //    that the Teachers tab surfaces on each student card:
+    //      - ue_student_status — e.g. "Confirmed", "Withdrawn", etc.
+    //      - notes             — free-text notes from the school staff.
+    //    Both are read here regardless of which tab is calling, and the
+    //    frontend decides whether to display them (Teachers tab only).
     const studentsRes = await fetch(
       "https://api.hubapi.com/crm/v3/objects/contacts/batch/read",
       {
@@ -66,7 +71,7 @@ export async function handler(event) {
         headers,
         body: JSON.stringify({
           inputs: studentIds.map(id => ({ id: String(id) })),
-          properties: ["firstname", "lastname", "email", "phone"]
+          properties: ["firstname", "lastname", "email", "phone", "ue_student_status", "notes"]
         })
       }
     );
@@ -100,6 +105,10 @@ export async function handler(event) {
           name: `${student.properties.firstname || ""} ${student.properties.lastname || ""}`.trim(),
           email: student.properties.email || "",
           phone: student.properties.phone || "",
+          // Teacher-tab-only fields. Sent on every response; the frontend
+          // chooses whether to render them based on which tab called.
+          status: (student.properties.ue_student_status || "").trim(),
+          notes:  (student.properties.notes || "").trim(),
           totalPaid: paymentInfo.totalPaid,
           payments: paymentInfo.payments,
           dealAmount: paymentInfo.dealAmount,
