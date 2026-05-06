@@ -918,6 +918,52 @@
       letter-spacing: 0.5px;
     }
 
+    /* TRIP LEADER RESOURCE LINKS
+       Denser variant of .manual-card. There can be up to ~18 of these so
+       the cards are smaller and the grid auto-fills more aggressively. */
+    .tl-link-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 0 0 24px;
+    }
+
+    .tl-link-card {
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-top: 3px solid #5b7f9e;
+      padding: 16px 16px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 96px;
+    }
+
+    .tl-link-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      color: #231f20;
+      line-height: 1.3;
+    }
+
+    .tl-link-card .tl-link-btn {
+      display: inline-block;
+      align-self: flex-start;
+      padding: 7px 14px;
+      background: #5b7f9e;
+      color: white !important;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-decoration: none !important;
+      border-radius: 4px;
+      transition: opacity 0.2s ease;
+    }
+
+    .tl-link-card .tl-link-btn:hover { opacity: 0.85; }
+
     /* DOCUMENT UPLOADS */
     .docs-section-label {
       font-size: 11px;
@@ -1206,6 +1252,75 @@
       return `<div class="manuals-empty">No resources have been added yet.</div>`;
     }
     return `<div class="manual-grid">${cards.join("")}</div>`;
+  }
+
+  // ============================================================
+  // === EDIT THIS LIST TO ADD/RENAME A TRIP LEADER LINK ===
+  // Each entry below renders as a small card at the top of the
+  // Trip Leader tab — title on top, "Details" button below — but
+  // ONLY when the corresponding HubSpot property has a non-empty
+  // URL on this trip's record (or, if blank there, on the global
+  // Portal record). Empty fields are silently hidden.
+  //
+  // To add a new one:
+  //   1. Create a single-line text property in HubSpot on the
+  //      Portal custom object with the internal name shown in
+  //      `prop` below.
+  //   2. Add the same internal name to PORTAL_PROPERTIES in
+  //      netlify/functions/portal.js.
+  //   3. Add an entry here. Done.
+  //
+  // HubSpot internal-name quirks worth knowing about:
+  //   - Spaces become "_". "Leader Manual" → "leader_manual".
+  //   - Ampersands collapse but the spaces on either side stay,
+  //     so you end up with a DOUBLE underscore. "Emergency
+  //     Numbers & Escalation" → "emergency_numbers__escalation".
+  //   - Everything is lowercased.
+  // ============================================================
+  const TRIP_LEADER_LINKS = [
+    { label: "Leader Manual",                  prop: "leader_manual" },
+    { label: "Leader Handbook",                prop: "leader_handbook" },
+    { label: "Generic Risk Assessment",        prop: "generic_risk_assessment" },
+    { label: "Country Risk Assessment",        prop: "country_risk_assessment" },
+    { label: "Expedition Budget",              prop: "expedition_budget" },
+    { label: "Country Contact List",           prop: "country_contact_list" },
+    { label: "Medical Manual",                 prop: "medical_manual" },
+    { label: "InReach Manual",                 prop: "inreach_manual" },
+    { label: "Satellite Phone Manual",         prop: "satellite_phone_manual" },
+    { label: "Incident Report",                prop: "incident_report_link" },
+    { label: "Accommodation Audit",            prop: "accommodation_audit_link" },
+    { label: "Activity Audit",                 prop: "activity_audit_link" },
+    { label: "Transport Audit",                prop: "transport_audit_link" },
+    { label: "Wise Card Troubleshooting",      prop: "wise_card_troubleshooting" },
+    // Ampersand → double underscore (see header comment).
+    { label: "Emergency Numbers & Escalation", prop: "emergency_numbers__escalation" },
+    { label: "Expense & Reimbursement Policies", prop: "expense__reimbursement_policies" },
+    { label: "Device Policies",                prop: "device_policies" },
+    { label: "Child Protection Policy",        prop: "child_protection_policy" }
+  ];
+
+  // Renders the Trip Leader resource-link grid, hiding any field whose
+  // URL is blank on both the trip record and the global record. Returns
+  // an empty string when nothing is configured so we don't draw an empty
+  // section header.
+  function renderTripLeaderLinks() {
+    const cards = TRIP_LEADER_LINKS
+      .filter(f => {
+        const v = portalData[f.prop];
+        return v && String(v).trim();
+      })
+      .map(f => {
+        const url = String(portalData[f.prop]).trim();
+        return `
+          <div class="tl-link-card">
+            <div class="tl-link-title">${f.label.toUpperCase()}</div>
+            <a href="${url}" target="_blank" rel="noopener" class="tl-link-btn">DETAILS</a>
+          </div>
+        `;
+      });
+
+    if (cards.length === 0) return "";
+    return `<div class="tl-link-grid">${cards.join("")}</div>`;
   }
 
   // ----- Message board -----
@@ -1776,11 +1891,18 @@
       }
 
       if (field === "trip_leader_information_content") {
-        // Trip Leader tab — same student listing as the teacher tab, but each
-        // card gets a "VIEW APPLICATION DETAILS" button that expands inline
-        // to show the student's medical/health/passport/dietary fields from
-        // their Jotform application submission.
-        content.innerHTML = portalData[field] || "";
+        // Trip Leader tab — three sections, top to bottom:
+        //   1. Resource link grid (Leader Manual, Risk Assessments, etc.).
+        //      Each entry renders as a small "Title + Details" card and is
+        //      hidden when its URL is blank on both the trip record and the
+        //      global record. Configure via TRIP_LEADER_LINKS above.
+        //   2. The trip_leader_information_content rich-text block from the
+        //      Portal record — anything the school types into HubSpot.
+        //   3. The student list, with each card opening a Medical
+        //      Information modal (filtered subset of the application form).
+        const linksHtml   = renderTripLeaderLinks();
+        const richTextHtml = portalData[field] || "";
+        content.innerHTML = linksHtml + richTextHtml;
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadStudentList(content, { expandable: true });
