@@ -263,7 +263,7 @@ async function loadPortraitsByEmail() {
   if (!process.env.JOTFORM_API_KEY) return empty;
 
   const formIds = (process.env.JOTFORM_APPLICATION_FORM_ID
-    || "251396787451873,253477140703050")
+    || "251396787451873,253477140703050,260388618557066")
     .split(",").map(s => s.trim()).filter(Boolean);
   if (formIds.length === 0) return empty;
 
