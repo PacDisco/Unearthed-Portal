@@ -61,7 +61,12 @@ export async function handler(event) {
     //    associated deal (not here), but we DO pull two contact-level fields
     //    that the Teachers tab surfaces on each student card:
     //      - ue_student_status — e.g. "Confirmed", "Withdrawn", etc.
-    //      - notes             — free-text notes from the school staff.
+    //      - notes__c          — free-text notes from the school staff.
+    //                            (The "__c" suffix is HubSpot's convention
+    //                            for fields that came from a Salesforce
+    //                            sync; the property is named "notes" in
+    //                            the UI but the internal name keeps the
+    //                            Salesforce-side suffix.)
     //    Both are read here regardless of which tab is calling, and the
     //    frontend decides whether to display them (Teachers tab only).
     const studentsRes = await fetch(
@@ -71,7 +76,7 @@ export async function handler(event) {
         headers,
         body: JSON.stringify({
           inputs: studentIds.map(id => ({ id: String(id) })),
-          properties: ["firstname", "lastname", "email", "phone", "ue_student_status", "notes"]
+          properties: ["firstname", "lastname", "email", "phone", "ue_student_status", "notes__c"]
         })
       }
     );
@@ -108,7 +113,7 @@ export async function handler(event) {
           // Teacher-tab-only fields. Sent on every response; the frontend
           // chooses whether to render them based on which tab called.
           status: (student.properties.ue_student_status || "").trim(),
-          notes:  (student.properties.notes || "").trim(),
+          notes:  (student.properties.notes__c || "").trim(),
           totalPaid: paymentInfo.totalPaid,
           payments: paymentInfo.payments,
           dealAmount: paymentInfo.dealAmount,
