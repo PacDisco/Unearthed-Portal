@@ -114,10 +114,14 @@ export async function handler(event) {
       const rawUrl = key ? portraitsByEmail.get(key) : null;
       return {
         ...s,
-        // Route the portrait through our get-document proxy so it loads in
-        // the parent's browser without a Jotform login. Null when no match.
+        // Route the portrait through our /document-proxy EDGE function so it
+        // loads in the parent's browser without a Jotform login. We use the
+        // edge function (not /.netlify/functions/get-document) because iPhone
+        // portrait photos routinely exceed the 6MB synchronous-function
+        // response cap. The edge function streams the upstream body straight
+        // through, supporting files up to ~20MB. Null when there's no match.
         portraitUrl: rawUrl
-          ? `/.netlify/functions/get-document?url=${encodeURIComponent(rawUrl)}`
+          ? `/document-proxy?url=${encodeURIComponent(rawUrl)}`
           : null
       };
     });
