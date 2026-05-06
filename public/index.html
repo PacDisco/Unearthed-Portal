@@ -714,17 +714,13 @@
       align-self: center;
     }
 
-    /* Fallback styling for the Unearthed-logo placeholder.
-       Applied when the contact has no headshot configured, or when the
-       configured headshot fails to load (onerror in renderLeaderCard).
-       The logo is a wordmark, not a square portrait, so we contain it
-       inside the circle with padding rather than crop-cover it. */
-    .leader-card-photo--fallback {
-      object-fit: contain;
-      object-position: center;
-      padding: 14px;
-      box-sizing: border-box;
-      background: #ece6d6;
+    /* Hidden when the <img> errors out (e.g. broken URL) so we don't show
+       a broken-image icon. The placeholder div below is used when the
+       contact has no photo URL configured at all. */
+    .leader-card-photo.leader-card-photo--missing { display: none; }
+
+    .leader-card-photo--placeholder {
+      background: linear-gradient(135deg, #ece6d6 0%, #d8d2c2 100%);
     }
 
     .leader-card-role {
@@ -1590,36 +1586,30 @@
         return false;
       }
 
-      // Stripe call didn't work. If we have a fallback URL configured
-      // (payment_form_url on the trip or global record), open that;
-      // otherwise just close the popup and tell the user to try again.
+      // Stripe call didn't work. Fall through to the intermediate page so the
+      // user can still complete payment.
       console.error("Checkout creation failed:", data);
-      const haveFallback = !!(fallbackHref && fallbackHref !== "#");
       if (newWin) {
-        if (haveFallback) newWin.location.href = fallbackHref;
-        else newWin.close();
+        if (fallbackHref && fallbackHref !== "#") {
+          newWin.location.href = fallbackHref;
+        } else {
+          newWin.close();
+        }
       }
-      alert(
-        "Could not start the payment. " +
-        (data.error ? "(" + data.error + ") " : "") +
-        (haveFallback
-          ? "Opening the standard payment page instead."
-          : "Please try again in a moment, or contact info@unearthededucation.org if it keeps failing.")
-      );
+      alert("Could not start direct Stripe checkout. " +
+            (data.error ? "(" + data.error + ") " : "") +
+            "Opening the standard payment page instead.");
 
     } catch (err) {
       console.error("Checkout error:", err);
-      const haveFallback = !!(fallbackHref && fallbackHref !== "#");
       if (newWin) {
-        if (haveFallback) newWin.location.href = fallbackHref;
-        else newWin.close();
+        if (fallbackHref && fallbackHref !== "#") {
+          newWin.location.href = fallbackHref;
+        } else {
+          newWin.close();
+        }
       }
-      alert(
-        "Could not reach the payment service. " +
-        (haveFallback
-          ? "Opening the standard payment page instead."
-          : "Please try again in a moment, or contact info@unearthededucation.org if it keeps failing.")
-      );
+      alert("Could not reach the payment service. Opening the standard payment page instead.");
     } finally {
       el.style.opacity = originalOpacity;
       el.style.pointerEvents = "";
@@ -1817,49 +1807,19 @@
       .then(r => r.json())
       .catch(err => { console.error("Paid payments fetch error:", err); return { payments: [] }; });
 
-    // Tolerant URL sanitiser. HubSpot sometimes hands us URLs with leading
-    // or trailing whitespace, embedded newlines (rich-text fields), or
-    // surrounding angle brackets like "<https://...>" if someone pasted
-    // from an email client that auto-linked. Strip all of those before we
-    // hand the value to <a href="..."> or to URL.parse().
-    function sanitizeUrl(raw) {
-      if (raw == null) return null;
-      let s = String(raw)
-        .replace(/[ -]/g, "") // strip control chars (incl. \n, \r, \t)
-        .trim()
-        .replace(/^[<\s]+/, "")
-        .replace(/[>\s]+$/, "");
-      if (!s) return null;
-      // Bare hostname with no scheme — assume https.
-      if (!/^[a-z]+:\/\//i.test(s) && /^[\w.-]+\.[a-z]{2,}/i.test(s)) {
-        s = "https://" + s;
-      }
-      // Reject if still not parseable.
-      try { new URL(s); return s; } catch (_) { return null; }
-    }
-
-    let paymentFormUrl =
-      sanitizeUrl(portalData.payment_form_url) ||
-      sanitizeUrl(portalData.payments_form_url) ||
-      null;
+    let paymentFormUrl = (portalData.payment_form_url || portalData.payments_form_url || "").trim() || null;
     let paymentsInfo  = (portalData.payments_information_content || "").trim();
 
     if (!paymentFormUrl || !paymentsInfo) {
       try {
         const r = await fetch(`/.netlify/functions/get-insurance`);
         const d = await r.json();
-        if (!paymentFormUrl && d.payment_form_url) paymentFormUrl = sanitizeUrl(d.payment_form_url);
+        if (!paymentFormUrl && d.payment_form_url) paymentFormUrl = String(d.payment_form_url).trim();
         if (!paymentsInfo  && d.payments_information_content) paymentsInfo = String(d.payments_information_content).trim();
       } catch (err) {
         console.error("Payment global fetch error:", err);
       }
     }
-
-    // Diagnostic: surface the resolved URL in the browser console so we
-    // can tell from a screenshot whether (a) the merge brought a value
-    // down, (b) the value is a sane URL, and (c) the appended ?email=
-    // isn't colliding with an existing query string.
-    console.log("[loadPayments] paymentFormUrl resolved to:", paymentFormUrl);
 
     const paidData = await paidPromise;
 
@@ -1871,13 +1831,7 @@
     }
 
     if (paymentFormUrl) {
-      // Some payment-form URLs already contain a query string (e.g. a shared
-      // Stripe-payment-link or HubSpot-page URL with tracking params). Use
-      // "&" as the joiner in that case so we don't produce a malformed URL
-      // like "...?foo=bar?email=jake@…" which silently breaks the email
-      // prefill.
-      const sep = paymentFormUrl.includes("?") ? "&" : "?";
-      btnHtml = `<a href="${paymentFormUrl}${sep}email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT &amp; SEE PAYMENT HISTORY</a>`;
+      btnHtml = `<a href="${paymentFormUrl}?email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT & SEE PAYMENT HISTORY</a>`;
     }
 
     // Build a map of paid entries keyed by their schedule row index (1..10).
@@ -1903,13 +1857,10 @@
       return `$${parseFloat(n).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 
-    // Builds the FALLBACK URL for a specific payment row — used as the
-    // <a href="..."> target only when our /create-checkout-session call
-    // fails for some reason. The actual Stripe Checkout flow doesn't use
-    // this URL: it's driven entirely by the data-* attributes on the
-    // anchor + the startCheckout() handler. So this can return null when
-    // the trip (and global record) have no payment_form_url configured —
-    // we still want the row to be clickable in that case.
+    // Build a Stripe checkout URL for a specific payment row.
+    // `chargeAmount` is the fee-inclusive figure (what Stripe should actually charge).
+    // `baseAmount` is the listed installment amount. Both are sent so the receiving
+    // form / Stripe page has full context.
     function buildPaymentLink(i, baseAmount, chargeAmount) {
       if (!paymentFormUrl) return null;
       const params = new URLSearchParams();
@@ -1918,10 +1869,7 @@
       if (chargeAmount != null) params.set("amount", String(chargeAmount));
       if (baseAmount != null) params.set("base_amount", String(baseAmount));
       params.set("processing_fee_rate", String(PROCESSING_FEE_RATE));
-      // Same query-string-aware concat as the top button uses, so a
-      // payment_form_url that already has params doesn't get clobbered.
-      const sep = paymentFormUrl.includes("?") ? "&" : "?";
-      return `${paymentFormUrl}${sep}${params.toString()}`;
+      return `${paymentFormUrl}?${params.toString()}`;
     }
 
     // Format a paid entry's "actual amount · paid date" subtitle.
@@ -1966,23 +1914,20 @@
       } else if (chargeNum != null) {
         const chargeText = fmtMoney(chargeNum);
         const baseText = fmtMoney(baseNum);
-        // The href is only the *fallback* used when the JS Stripe call
-        // fails (or the user middle-clicks). The Stripe Checkout flow
-        // itself runs through startCheckout() and doesn't depend on this
-        // URL — so we still render the clickable button even when there
-        // is no payment_form_url on the trip OR the global record.
-        const fallbackLink = buildPaymentLink(i, baseNum, chargeNum);
+        const link = buildPaymentLink(i, baseNum, chargeNum); // fallback to the intermediate page
         const tripName = portalData.portal_title || portalData.destination || "Unearthed";
         const description = `${tripName} — Payment ${i}`;
-        const main = `<a href="${fallbackLink || "#"}"
-              target="_blank" rel="noopener"
-              class="payment-amount-link"
-              title="Pay this installment (includes 3% processing fee)"
-              data-payment-index="${i}"
-              data-base-amount="${baseNum}"
-              data-charge-amount="${chargeNum}"
-              data-description="${attrEsc(description)}"
-              onclick="return startCheckout(event, this);">${chargeText}</a>`;
+        const main = link
+          ? `<a href="${link}"
+                target="_blank" rel="noopener"
+                class="payment-amount-link"
+                title="Pay this installment (includes 3% processing fee)"
+                data-payment-index="${i}"
+                data-base-amount="${baseNum}"
+                data-charge-amount="${chargeNum}"
+                data-description="${attrEsc(description)}"
+                onclick="return startCheckout(event, this);">${chargeText}</a>`
+          : chargeText;
         amountCell = `${main}<span class="payment-amount-note">${baseText} + 3% fee</span>`;
       } else {
         amountCell = '<span class="tbc">TBC</span>';
@@ -2389,51 +2334,13 @@
     }
   }
 
-  // Fallback shown inside the leader-card photo circle when a contact has
-  // no expedition_leader_photo configured (or the configured one fails to
-  // load). The asset lives in the EDA Group HubSpot file manager so it
-  // stays under our control and isn't subject to third-party CDN hotlink
-  // or CORS quirks. Update this constant if the file is ever re-uploaded
-  // (HubSpot file URLs change when you re-upload rather than overwrite).
-  const LEADER_PHOTO_FALLBACK_URL = "https://3855728.fs1.hubspotusercontent-na1.net/hubfs/3855728/EDA%20Group%202025/Unearthed%20Education%202025/Logos/Logo-Landscape-Black.jpg";
-
   // Renders one school-leader / expedition-leader card. Same markup for
   // both — only the variant class and role label differ — so spacing,
   // photo size, and clamp behaviour stay aligned across the grid.
-  //
-  // Photo handling, three cascading tiers:
-  //   1. If we have a real photoUrl, render it normally.
-  //   2. If we don't, OR if (1) errors out, render the Unearthed logo in
-  //      the circle with the "is-fallback" modifier (object-fit: contain
-  //      and padding, so the wordmark fits inside the circle instead of
-  //      being cropped to a slice).
-  //   3. If (2) ALSO fails (rare — bad URL, file moved in HubSpot, etc.),
-  //      hide the <img> so we end up with just the empty tan circle
-  //      rather than a broken-image icon.
-  // The same onerror handler is attached in every case so we don't end
-  // up with an empty circle when only the third tier was needed.
   function renderLeaderCard({ variant, roleLabel, name, photoUrl, contactHtml, bioHtml }) {
-    const fallback = attrEsc(LEADER_PHOTO_FALLBACK_URL);
-    const hasPhoto = !!photoUrl;
-    const initialSrc = hasPhoto ? attrEsc(photoUrl) : fallback;
-    const initialClass = hasPhoto
-      ? "leader-card-photo"
-      : "leader-card-photo leader-card-photo--fallback";
-
-    // Inline-quoted JS so we can attach the same handler in both cases
-    // without templating around the differences. `data-fb` flips to "1"
-    // once we've already swapped to the fallback; the second time the
-    // handler fires we just hide the image instead of looping.
-    const onErrorJs =
-      "if(this.dataset.fb!=='1'){this.dataset.fb='1';this.src='" + fallback + "';this.classList.add('leader-card-photo--fallback');}" +
-      "else{this.onerror=null;this.style.display='none';}";
-
-    const photoHtml = `<img class="${initialClass}"`
-      + ` src="${initialSrc}"`
-      + ` alt="${attrEsc(name || roleLabel)}"`
-      + ` loading="lazy"`
-      + ` data-fb="${hasPhoto ? '0' : '1'}"`
-      + ` onerror="${onErrorJs}">`;
+    const photoHtml = photoUrl
+      ? `<img class="leader-card-photo" src="${attrEsc(photoUrl)}" alt="${attrEsc(name || roleLabel)}" loading="lazy" onerror="this.classList.add('leader-card-photo--missing');">`
+      : `<div class="leader-card-photo leader-card-photo--placeholder" aria-hidden="true"></div>`;
 
     return `
       <div class="leader-card leader-card--${variant}">
