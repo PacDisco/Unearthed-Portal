@@ -5,14 +5,21 @@
 //
 // Inputs (querystring):
 //   email   — the contact email to look up (required)
-//   formId  — Jotform form ID (defaults to env JOTFORM_APPLICATION_FORM_ID,
-//             else 251396787451873)
+//   formId  — comma-separated Jotform form ID(s); defaults to env
+//             JOTFORM_APPLICATION_FORM_ID, else
+//             "251396787451873,253477140703050" (the original application
+//             form + the newer version some students use).
 //
 // Required env var: JOTFORM_API_KEY
 // Optional env var: JOTFORM_BASE_URL  (default https://api.jotform.com)
-// Optional env var: JOTFORM_APPLICATION_FORM_ID (default 251396787451873)
+// Optional env var: JOTFORM_APPLICATION_FORM_ID — comma-separated list of
+//                   form IDs to search across. Add more here when new
+//                   application-form versions are spun up so old students
+//                   don't drop out of the lookup.
 
-const DEFAULT_FORM_ID = process.env.JOTFORM_APPLICATION_FORM_ID || "251396787451873";
+const DEFAULT_FORM_IDS = (process.env.JOTFORM_APPLICATION_FORM_ID
+  || "251396787451873,253477140703050")
+  .split(",").map(s => s.trim()).filter(Boolean);
 
 export async function handler(event) {
   try {
@@ -34,50 +41,64 @@ export async function handler(event) {
     const cleanEmail = String(email).toLowerCase().trim();
     const apiKey = process.env.JOTFORM_API_KEY;
     const baseUrl = (process.env.JOTFORM_BASE_URL || "https://api.jotform.com").replace(/\/+$/, "");
-    const targetFormId = (formId || DEFAULT_FORM_ID).toString();
 
-    // Pull every submission for the form, then filter to those whose email
-    // answer matches the requested contact email.
-    const submissions = await fetchAllSubmissions(targetFormId, apiKey, baseUrl);
-    if (submissions.error) {
-      return {
-        statusCode: 502,
-        body: JSON.stringify({ error: submissions.error })
-      };
+    const targetFormIds = (formId
+      ? String(formId).split(",").map(s => s.trim()).filter(Boolean)
+      : DEFAULT_FORM_IDS);
+    if (targetFormIds.length === 0) {
+      return { statusCode: 400, body: JSON.stringify({ error: "No form IDs configured" }) };
     }
 
-    const matching = submissions.list
-      .filter(s => submissionEmailMatches(s, cleanEmail))
-      .sort((a, b) => {
-        const ta = new Date(a.created_at || 0).getTime();
-        const tb = new Date(b.created_at || 0).getTime();
-        return tb - ta;
-      });
+    // Fetch every submission across all configured form IDs in parallel.
+    const perForm = await Promise.all(
+      targetFormIds.map(id => fetchAllSubmissions(id, apiKey, baseUrl)
+        .then(r => ({ id, ...r })))
+    );
+
+    let firstError = null;
+    const matching = []; // { submission, formId }
+    for (const r of perForm) {
+      if (r.error) { if (!firstError) firstError = r.error; continue; }
+      for (const s of r.list) {
+        if (submissionEmailMatches(s, cleanEmail)) {
+          matching.push({ submission: s, formId: r.id });
+        }
+      }
+    }
 
     if (matching.length === 0) {
       return {
         statusCode: 200,
         body: JSON.stringify({
           found: false,
-          formId: targetFormId,
+          formId: targetFormIds.join(","),
           submissionId: null,
           submittedAt: null,
-          fields: []
+          fields: [],
+          warning: firstError || null
         })
       };
     }
 
-    const submission = matching[0];
-    const fields = extractFields(submission);
+    // Most recent submission across all forms wins
+    matching.sort((a, b) => {
+      const ta = new Date(a.submission.created_at || 0).getTime();
+      const tb = new Date(b.submission.created_at || 0).getTime();
+      return tb - ta;
+    });
+
+    const winner = matching[0];
+    const fields = extractFields(winner.submission);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         found: true,
-        formId: targetFormId,
-        submissionId: submission.id,
-        submittedAt: submission.created_at || null,
-        fields
+        formId: winner.formId,
+        submissionId: winner.submission.id,
+        submittedAt: winner.submission.created_at || null,
+        fields,
+        warning: firstError || null
       })
     };
 
