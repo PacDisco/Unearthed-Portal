@@ -1639,8 +1639,20 @@
       const portalUrl = adminViewing
         ? `/.netlify/functions/portal?portalId=${encodeURIComponent(adminPortalId)}`
         : `/.netlify/functions/portal?email=${encodeURIComponent(email)}`;
+      console.log("[init] fetching portal URL:", portalUrl);
       const res = await fetch(portalUrl);
-      const data = await res.json();
+      // Netlify returns HTML when a function crashes at startup; try to
+      // parse JSON, but if that fails, surface the raw text + status so
+      // we can debug instead of falling into the silent retry loop.
+      let data;
+      const responseText = await res.text();
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error(`[init] portal response was not JSON (HTTP ${res.status}):`, responseText.slice(0, 400));
+        document.body.innerHTML = `<div style="padding:32px; font-family:Inter,sans-serif;"><h1 style="color:#c0392b;">Error loading portal</h1><p>HTTP ${res.status} from /.netlify/functions/portal</p><pre style="background:#f5f1e6; padding:12px; overflow:auto; font-size:11px;">${responseText.slice(0, 800).replace(/[<&>]/g, c => ({"<":"&lt;","&":"&amp;",">":"&gt;"})[c])}</pre></div>`;
+        return;
+      }
 
       console.log("PORTAL DATA:", data);
 
