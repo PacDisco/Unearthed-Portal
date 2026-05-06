@@ -2105,14 +2105,13 @@
         if (expandable) {
           // Trip leader: button opens the same popup as the teacher tab,
           // but with the focused medical/health/passport/dietary whitelist
-          // applied so trip leaders see the same compact "what they need
-          // to know" view they had before.
+          // applied so trip leaders see only the emergency-relevant view.
           expandBlock = `
             <button class="student-expand-btn" type="button"
                     data-email="${attrEsc(student.email || "")}"
                     data-student-name="${attrEsc(student.name || "")}"
                     onclick="openApplicationModal(this.dataset.email, this.dataset.studentName, true)">
-              VIEW APPLICATION DETAILS
+              MEDICAL INFORMATION
             </button>
           `;
         } else if (showAppModal) {
@@ -2131,16 +2130,29 @@
           ? `<img class="student-card-photo" src="${attrEsc(student.portraitUrl)}" alt="${attrEsc(student.name || "Student")}" loading="lazy" onerror="this.style.display='none';">`
           : "";
 
+        // Trip-leader cards focus on medical context — hide the student's
+        // email + the payment details. Other tabs (teacher) keep them.
+        const showStudentEmail = !expandable;
+        const showPayments = !expandable;
+
+        const contactInfoHtml = (showStudentEmail && student.email) || student.phone
+          ? `<div class="contact-info">
+              ${showStudentEmail && student.email ? `<a href="mailto:${attrEsc(student.email)}">${attrEsc(student.email)}</a><br>` : ""}
+              ${student.phone ? `<a href="tel:${attrEsc(student.phone)}">${attrEsc(student.phone)}</a>` : ""}
+            </div>`
+          : "";
+
+        const paymentsBlock = showPayments
+          ? `<div class="paid-badge">TOTAL PAID: $${student.totalPaid.toLocaleString()}</div>
+             <div class="payments-list">${paymentsHtml}</div>`
+          : "";
+
         grid.innerHTML += `
           <div class="student-card">
             ${photoHtml}
             <h3>${attrEsc(student.name || "Unknown")}</h3>
-            <div class="contact-info">
-              ${student.email ? `<a href="mailto:${attrEsc(student.email)}">${attrEsc(student.email)}</a><br>` : ""}
-              ${student.phone ? `<a href="tel:${attrEsc(student.phone)}">${attrEsc(student.phone)}</a>` : ""}
-            </div>
-            <div class="paid-badge">TOTAL PAID: $${student.totalPaid.toLocaleString()}</div>
-            <div class="payments-list">${paymentsHtml}</div>
+            ${contactInfoHtml}
+            ${paymentsBlock}
             <div class="parent-section">
               <div class="parent-label">PARENTS / GUARDIANS</div>
               ${parentsHtml}
@@ -2313,7 +2325,7 @@
     const titleEl = document.getElementById("appModalTitle");
     if (!modal || !body) return;
 
-    if (titleEl) titleEl.textContent = tripLeaderOnly ? "APPLICATION DETAILS" : "APPLICATION INFORMATION";
+    if (titleEl) titleEl.textContent = tripLeaderOnly ? "MEDICAL INFORMATION" : "APPLICATION INFORMATION";
     if (subject) subject.textContent = name || "";
     body.innerHTML = `<div class="application-detail-empty">LOADING APPLICATION…</div>`;
     modal.hidden = false;
