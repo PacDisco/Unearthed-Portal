@@ -133,7 +133,71 @@ export async function handler(event) {
     // internal name to the comma-separated list below. See
     // HOW_TO_ADD_FIELDS.md in the project root for a step-by-step guide.
     // ============================================================
-    const PORTAL_PROPERTIES = "portal_title,destination,price,trip_information_content,destination_overview_content,travel_information_content,general_information_content,family_information_content,payments_information_content,payments_form_url,payment_form_url,trip_leader_information_content,teacher_information_content,faqs,hs_object_id,itinerary,initial_planning_meeting,initial_planning_meeting_information,training_event,training_event_information,final_briefing,final_briefing_information,buildup_day,buildup_day_information,reentry_workshop,reentry_workshop_information,flight_departure_date,departure_airlines,departure_routing,return_flight_date,return_flight_airlines,return_flight_routing,payment_date_1,payment_amount_1,payment_date_2,payment_amount_2,payment_date_3,payment_amount_3,payment_date_4,payment_amount_4,payment_date_5,payment_amount_5,payment_date_6,payment_amount_6,payment_date_7,payment_amount_7,payment_date_8,payment_amount_8,payment_date_9,payment_amount_9,payment_date_10,payment_amount_10,student_manual,student_handbook,gear_list,fundraising_guide,fitness,insurance_overview__faqs,insurance_policy_wording,documents_upload_form,message_board,message_board_posted_at";
+    const PORTAL_PROPERTIES = [
+      // Core trip metadata
+      "portal_title", "destination", "price",
+      // Tab content (rich text)
+      "trip_information_content", "destination_overview_content",
+      "travel_information_content", "general_information_content",
+      "family_information_content", "payments_information_content",
+      "trip_leader_information_content", "teacher_information_content",
+      "faqs", "hs_object_id",
+      // Payment form URLs
+      "payments_form_url", "payment_form_url",
+      // Schedule / itinerary
+      "itinerary",
+      "initial_planning_meeting", "initial_planning_meeting_information",
+      "training_event", "training_event_information",
+      "final_briefing", "final_briefing_information",
+      "buildup_day", "buildup_day_information",
+      "reentry_workshop", "reentry_workshop_information",
+      // Flights
+      "flight_departure_date", "departure_airlines", "departure_routing",
+      "return_flight_date", "return_flight_airlines", "return_flight_routing",
+      // Payment schedule (1..10)
+      "payment_date_1", "payment_amount_1",
+      "payment_date_2", "payment_amount_2",
+      "payment_date_3", "payment_amount_3",
+      "payment_date_4", "payment_amount_4",
+      "payment_date_5", "payment_amount_5",
+      "payment_date_6", "payment_amount_6",
+      "payment_date_7", "payment_amount_7",
+      "payment_date_8", "payment_amount_8",
+      "payment_date_9", "payment_amount_9",
+      "payment_date_10", "payment_amount_10",
+      // Student/family resources (manuals tab)
+      "student_manual", "student_handbook", "gear_list",
+      "fundraising_guide", "fitness",
+      // Insurance + documents
+      "insurance_overview__faqs", "insurance_policy_wording",
+      "documents_upload_form",
+      // Message board
+      "message_board", "message_board_posted_at",
+      // ============================================================
+      // Trip Leader resource links (rendered as Details buttons at the
+      // top of the Trip Leader tab; see TRIP_LEADER_LINKS in index.html
+      // for the labels). Each one stores a single URL. Trip-level value
+      // wins; if blank, falls back to the global record's value.
+      // ============================================================
+      "leader_manual",
+      "leader_handbook",
+      "generic_risk_assessment",
+      "country_risk_assessment",
+      "expedition_budget",
+      "country_contact_list",
+      "medical_manual",
+      "inreach_manual",
+      "satellite_phone_manual",
+      "incident_report_link",
+      "accommodation_audit_link",
+      "activity_audit_link",
+      "transport_audit_link",
+      "wise_card_troubleshooting",
+      "emergency_numbers__escalation",
+      "expense__reimbursement_policies",
+      "device_policies",
+      "child_protection_policy"
+    ].join(",");
 
     const tripPortalUrl   = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=${PORTAL_PROPERTIES}`;
     const globalPortalUrl = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${GLOBAL_PORTAL_ID}?properties=${PORTAL_PROPERTIES}`;
