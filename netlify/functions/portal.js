@@ -1,10 +1,17 @@
 export async function handler(event) {
   try {
-    const email = event.queryStringParameters.email;
-    if (!email) {
+    const params = event.queryStringParameters || {};
+    const email = params.email;
+    // Admin viewing path: caller passed ?portalId=… instead of ?email=…
+    // Skip the contact-lookup + association step entirely and just return
+    // that specific Portal record's content. Used by /admin.html when an
+    // admin picks a trip from the portal list.
+    const adminPortalId = params.portalId;
+
+    if (!email && !adminPortalId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Missing email" })
+        body: JSON.stringify({ error: "Missing email or portalId" })
       };
     }
 
@@ -24,100 +31,115 @@ export async function handler(event) {
       28: "Trip Leader"
     };
 
-    // 1. Find contact
-    const contactRes = await fetch(
-      "https://api.hubapi.com/crm/v3/objects/contacts/search",
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          filterGroups: [{
-            filters: [{
-              propertyName: "email",
-              operator: "EQ",
-              value: email
+    // ----- Resolve portalId + tab-visibility labels -----
+    // Two paths:
+    //   (A) Regular user: look up the contact, find their portal association,
+    //       use the typeIds to figure out which tabs they should see.
+    //   (B) Admin viewing: caller already told us which portal to load, so
+    //       skip both lookups. Admins see every tab — return all labels.
+    let portalId, labels;
+
+    if (adminPortalId) {
+      portalId = String(adminPortalId);
+      // Returning every plausible label so applyVisibility() in the
+      // frontend keeps every tab on for admin viewing.
+      labels = ["Parent", "Student", "Teacher", "Trip Leader"];
+    } else {
+      // Path A: contact-association lookup.
+      const contactRes = await fetch(
+        "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            filterGroups: [{
+              filters: [{
+                propertyName: "email",
+                operator: "EQ",
+                value: email
+              }]
             }]
-          }]
-        })
+          })
+        }
+      );
+
+      if (!contactRes.ok) {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({
+            error: "Contact fetch failed",
+            details: await contactRes.text()
+          })
+        };
       }
-    );
 
-    if (!contactRes.ok) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({
-          error: "Contact fetch failed",
-          details: await contactRes.text()
-        })
-      };
+      const contactData = await contactRes.json();
+      const contactId = contactData.results?.[0]?.id;
+
+      console.log("CONTACT ID:", contactId);
+
+      if (!contactId) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ error: "Contact not found" })
+        };
+      }
+
+      // 2. Get associated portal
+      const assocRes = await fetch(
+        `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/${OBJECT}`,
+        { headers }
+      );
+
+      if (!assocRes.ok) {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({
+            error: "Association fetch failed",
+            details: await assocRes.text()
+          })
+        };
+      }
+
+      const assocData = await assocRes.json();
+
+      console.log("RAW ASSOC RESULTS:", JSON.stringify(assocData.results, null, 2));
+
+      if (!assocData.results || assocData.results.length === 0) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ error: "No portal association found" })
+        };
+      }
+
+      portalId = assocData.results[0].toObjectId;
+
+      console.log("PORTAL ID:", portalId);
+
+      // Get typeIds from this association
+      const typeIds = assocData.results
+        .flatMap(r => r.associationTypes || [])
+        .map(t => t.typeId);
+
+      // Fetch label definitions
+      const labelDefsRes = await fetch(
+        `https://api.hubapi.com/crm/v4/associations/contacts/${OBJECT}/labels`,
+        { headers }
+      );
+
+      const labelDefs = await labelDefsRes.json();
+
+      console.log("LABEL DEFS:", JSON.stringify(labelDefs, null, 2));
+
+      // Match typeIds to label definitions
+      // Use override map for paired labels where HubSpot returns null
+      labels = (labelDefs.results || [])
+        .filter(def => typeIds.includes(def.typeId))
+        .map(def => pairedLabelOverrides[def.typeId] || def.label)
+        .filter(l => l && l !== "Program");
+
+      console.log("LABELS EXTRACTED:", labels);
     }
-
-    const contactData = await contactRes.json();
-    const contactId = contactData.results?.[0]?.id;
-
-    console.log("CONTACT ID:", contactId);
-
-    if (!contactId) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ error: "Contact not found" })
-      };
-    }
-
-    // 2. Get associated portal
-    const assocRes = await fetch(
-      `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/${OBJECT}`,
-      { headers }
-    );
-
-    if (!assocRes.ok) {
-      return {
-        statusCode: 500,
-        body: JSON.stringify({
-          error: "Association fetch failed",
-          details: await assocRes.text()
-        })
-      };
-    }
-
-    const assocData = await assocRes.json();
-
-    console.log("RAW ASSOC RESULTS:", JSON.stringify(assocData.results, null, 2));
-
-    if (!assocData.results || assocData.results.length === 0) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ error: "No portal association found" })
-      };
-    }
-
-    const portalId = assocData.results[0].toObjectId;
-
-    console.log("PORTAL ID:", portalId);
-
-    // Get typeIds from this association
-    const typeIds = assocData.results
-      .flatMap(r => r.associationTypes || [])
-      .map(t => t.typeId);
-
-    // Fetch label definitions
-    const labelDefsRes = await fetch(
-      `https://api.hubapi.com/crm/v4/associations/contacts/${OBJECT}/labels`,
-      { headers }
-    );
-
-    const labelDefs = await labelDefsRes.json();
-
-    console.log("LABEL DEFS:", JSON.stringify(labelDefs, null, 2));
-
-    // Match typeIds to label definitions
-    // Use override map for paired labels where HubSpot returns null
-    const labels = (labelDefs.results || [])
-      .filter(def => typeIds.includes(def.typeId))
-      .map(def => pairedLabelOverrides[def.typeId] || def.label)
-      .filter(l => l && l !== "Program");
-
-    console.log("LABELS EXTRACTED:", labels);
 
     // 3. Get portal content from BOTH the trip's record AND the global
     //    record in parallel, then merge with trip-priority. Any property
