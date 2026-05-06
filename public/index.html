@@ -714,13 +714,17 @@
       align-self: center;
     }
 
-    /* Hidden when the <img> errors out (e.g. broken URL) so we don't show
-       a broken-image icon. The placeholder div below is used when the
-       contact has no photo URL configured at all. */
-    .leader-card-photo.leader-card-photo--missing { display: none; }
-
-    .leader-card-photo--placeholder {
-      background: linear-gradient(135deg, #ece6d6 0%, #d8d2c2 100%);
+    /* Fallback styling for the Unearthed-logo placeholder.
+       Applied when the contact has no headshot configured, or when the
+       configured headshot fails to load (onerror in renderLeaderCard).
+       The logo is a wordmark, not a square portrait, so we contain it
+       inside the circle with padding rather than crop-cover it. */
+    .leader-card-photo--fallback {
+      object-fit: contain;
+      object-position: center;
+      padding: 14px;
+      box-sizing: border-box;
+      background: #ece6d6;
     }
 
     .leader-card-role {
@@ -2334,13 +2338,51 @@
     }
   }
 
+  // Fallback shown inside the leader-card photo circle when a contact has
+  // no expedition_leader_photo configured (or the configured one fails to
+  // load). The asset lives in the EDA Group HubSpot file manager so it
+  // stays under our control and isn't subject to third-party CDN hotlink
+  // or CORS quirks. Update this constant if the file is ever re-uploaded
+  // (HubSpot file URLs change when you re-upload rather than overwrite).
+  const LEADER_PHOTO_FALLBACK_URL = "https://3855728.fs1.hubspotusercontent-na1.net/hubfs/3855728/EDA%20Group%202025/Unearthed%20Education%202025/Logos/Logo-Landscape-Black.jpg";
+
   // Renders one school-leader / expedition-leader card. Same markup for
   // both — only the variant class and role label differ — so spacing,
   // photo size, and clamp behaviour stay aligned across the grid.
+  //
+  // Photo handling, three cascading tiers:
+  //   1. If we have a real photoUrl, render it normally.
+  //   2. If we don't, OR if (1) errors out, render the Unearthed logo in
+  //      the circle with the "is-fallback" modifier (object-fit: contain
+  //      and padding, so the wordmark fits inside the circle instead of
+  //      being cropped to a slice).
+  //   3. If (2) ALSO fails (rare — bad URL, file moved in HubSpot, etc.),
+  //      hide the <img> so we end up with just the empty tan circle
+  //      rather than a broken-image icon.
+  // The same onerror handler is attached in every case so we don't end
+  // up with an empty circle when only the third tier was needed.
   function renderLeaderCard({ variant, roleLabel, name, photoUrl, contactHtml, bioHtml }) {
-    const photoHtml = photoUrl
-      ? `<img class="leader-card-photo" src="${attrEsc(photoUrl)}" alt="${attrEsc(name || roleLabel)}" loading="lazy" onerror="this.classList.add('leader-card-photo--missing');">`
-      : `<div class="leader-card-photo leader-card-photo--placeholder" aria-hidden="true"></div>`;
+    const fallback = attrEsc(LEADER_PHOTO_FALLBACK_URL);
+    const hasPhoto = !!photoUrl;
+    const initialSrc = hasPhoto ? attrEsc(photoUrl) : fallback;
+    const initialClass = hasPhoto
+      ? "leader-card-photo"
+      : "leader-card-photo leader-card-photo--fallback";
+
+    // Inline-quoted JS so we can attach the same handler in both cases
+    // without templating around the differences. `data-fb` flips to "1"
+    // once we've already swapped to the fallback; the second time the
+    // handler fires we just hide the image instead of looping.
+    const onErrorJs =
+      "if(this.dataset.fb!=='1'){this.dataset.fb='1';this.src='" + fallback + "';this.classList.add('leader-card-photo--fallback');}" +
+      "else{this.onerror=null;this.style.display='none';}";
+
+    const photoHtml = `<img class="${initialClass}"`
+      + ` src="${initialSrc}"`
+      + ` alt="${attrEsc(name || roleLabel)}"`
+      + ` loading="lazy"`
+      + ` data-fb="${hasPhoto ? '0' : '1'}"`
+      + ` onerror="${onErrorJs}">`;
 
     return `
       <div class="leader-card leader-card--${variant}">
