@@ -27,7 +27,10 @@ export async function handler(event) {
               value: cleanEmail
             }]
           }],
-          properties: ["email", "portal_password"]
+          // admin_role + firstname are returned to the browser so the
+          // login page can route admins straight to /admin.html and
+          // greet by name. portal_password is what we authenticate against.
+          properties: ["email", "portal_password", "admin_role", "firstname"]
         })
       }
     );
@@ -60,7 +63,14 @@ export async function handler(event) {
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, email: cleanEmail })
+      body: JSON.stringify({
+        success: true,
+        email: cleanEmail,
+        // Optional fields. The login page checks adminRole to decide
+        // whether to land the user on /admin.html or the regular portal.
+        adminRole: contact.properties?.admin_role || null,
+        firstName: contact.properties?.firstname || null
+      })
     };
 
   } catch (err) {
