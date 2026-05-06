@@ -797,6 +797,10 @@
     .leader-card--school-leader     .leader-card-role { color: #5b7f9e; }
     .leader-card--expedition-leader { border-top-color: #d6a380; }
     .leader-card--expedition-leader .leader-card-role { color: #d6a380; }
+    /* Admin variant — Program Administrator / Operations Manager. Distinct
+       teal accent so admins read as a separate role at a glance. */
+    .leader-card--admin             { border-top-color: #2d6b74; }
+    .leader-card--admin             .leader-card-role { color: #2d6b74; }
 
     /* FLIGHTS & INSURANCE */
     .flights-grid {
@@ -1630,7 +1634,12 @@
 
   async function init(retries = 3) {
     try {
-      const res = await fetch(`/.netlify/functions/portal?email=${email}`);
+      // Admins fetch a specific portal by id. Regular users fetch
+      // their own via email-based contact-association lookup.
+      const portalUrl = adminViewing
+        ? `/.netlify/functions/portal?portalId=${encodeURIComponent(adminPortalId)}`
+        : `/.netlify/functions/portal?email=${encodeURIComponent(email)}`;
+      const res = await fetch(portalUrl);
       const data = await res.json();
 
       console.log("PORTAL DATA:", data);
@@ -1647,6 +1656,7 @@
       }
 
       portalData = data;
+      if (adminViewing) renderAdminBanner();
 
       document.getElementById("title").innerText =
         portalData.portal_title || "UNEARTHED";
@@ -2342,7 +2352,8 @@
 
       const teachers    = Array.isArray(data.teachers)    ? data.teachers    : [];
       const tripLeaders = Array.isArray(data.tripLeaders) ? data.tripLeaders : [];
-      if (data.error || (teachers.length === 0 && tripLeaders.length === 0)) return;
+      const admins      = Array.isArray(data.admins)      ? data.admins      : [];
+      if (data.error || (teachers.length === 0 && tripLeaders.length === 0 && admins.length === 0)) return;
 
       const section = document.createElement("div");
       section.className = "teacher-section";
@@ -2350,6 +2361,24 @@
 
       const grid = document.createElement("div");
       grid.className = "teacher-grid";
+
+      // Admins (Program Administrator / Operations Manager) — rendered
+      // FIRST so they sit at the top of SCHOOL CONTACTS. Same renderLeaderCard
+      // helper as the other roles so spacing/photo size/clamp behaviour
+      // stays aligned across the row.
+      admins.forEach(a => {
+        const bioHtml = a.bio ? applyTextBreaks(a.bio) : "";
+        grid.innerHTML += renderLeaderCard({
+          variant: "admin",
+          roleLabel: (a.role || "ADMIN").toUpperCase(),
+          name: a.name,
+          photoUrl: a.photoUrl,
+          contactHtml: a.email
+            ? `<div class="leader-card-contact"><a href="mailto:${attrEsc(a.email)}">${attrEsc(a.email)}</a></div>`
+            : "",
+          bioHtml
+        });
+      });
 
       // School leaders (HubSpot association label "Teacher") — full contact
       // card with optional headshot photo at top.
@@ -2935,7 +2964,25 @@
 
   function logout() {
     sessionStorage.removeItem("portalEmail");
+    sessionStorage.removeItem("adminRole");
+    sessionStorage.removeItem("firstName");
     window.location.href = "/login.html";
+  }
+
+  // Admin viewing banner — sits at the top of the page when an admin is
+  // viewing a trip via /admin.html. Has a back-link home + a "read-only"
+  // notice. Rendered once at init time.
+  function renderAdminBanner() {
+    if (document.getElementById("adminBanner")) return;
+    const div = document.createElement("div");
+    div.id = "adminBanner";
+    div.style.cssText = "background:#2d6b74; color:white; padding:10px 18px; display:flex; align-items:center; gap:14px; font-size:12px; letter-spacing:1.2px;";
+    div.innerHTML = `
+      <span style="font-weight:600;">ADMIN VIEW</span>
+      <span style="opacity:0.85;">You are viewing this trip as an administrator.</span>
+      <a href="/admin.html" style="margin-left:auto; color:white; text-decoration:underline; font-weight:600;">← BACK TO ADMIN HOME</a>
+    `;
+    document.body.insertBefore(div, document.body.firstChild);
   }
 
   function showInstallPrompt() {
