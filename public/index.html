@@ -631,55 +631,118 @@
 
     .teacher-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       gap: 16px;
+      align-items: start;
     }
 
-    .teacher-card {
+    /* LEADER CARDS (school leader + expedition leader)
+       Both share identical layout so the SCHOOL CONTACTS row stays
+       visually uniform. The variant class only swaps the accent color. */
+    .leader-card {
       background: #f9f8f2;
       border: 1px solid #e2decf;
       border-top: 4px solid #aed1db;
-      padding: 16px 20px;
+      padding: 18px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      /* Uniform-ish height: cards stretch to a fixed content area, with
+         overflowing bios clamped + toggle. Auto height when expanded. */
+      min-height: 320px;
+    }
+    .leader-card.leader-card--expanded { min-height: 320px; }
+
+    .leader-card-photo {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      object-fit: cover;
+      object-position: center top;
+      background: #ece6d6;
+      margin-bottom: 14px;
+      align-self: center;
     }
 
-    .teacher-card h4 {
+    /* Hidden when the <img> errors out (e.g. broken URL) so we don't show
+       a broken-image icon. The placeholder div below is used when the
+       contact has no photo URL configured at all. */
+    .leader-card-photo.leader-card-photo--missing { display: none; }
+
+    .leader-card-photo--placeholder {
+      background: linear-gradient(135deg, #ece6d6 0%, #d8d2c2 100%);
+    }
+
+    .leader-card-role {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #5b7f9e;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      align-self: flex-start;
+    }
+
+    .leader-card-name {
       margin: 0 0 8px;
       font-size: 14px;
       font-weight: 600;
+      color: #231f20;
     }
 
-    .teacher-card .teacher-contact {
+    .leader-card-contact {
       font-size: 12px;
       color: #666;
       line-height: 1.8;
     }
 
-    .teacher-card .teacher-contact a {
+    .leader-card-contact a {
       color: #59a1aa;
       text-decoration: none;
     }
 
-    /* Trip Leader variant — same card frame, different accent. Shows only
-       name + bio (no email/phone exposed in the parent view). */
-    .teacher-card--trip-leader {
-      border-top-color: #d6a380;
-    }
-
-    .teacher-card--trip-leader .teacher-card-role {
-      font-size: 10px;
-      letter-spacing: 1.5px;
-      font-weight: 600;
-      color: #d6a380;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-    }
-
-    .teacher-card--trip-leader .teacher-bio {
-      margin-top: 8px;
+    /* Bio block — clamped to ~5 lines by default. The wrapper sets the
+       max-height; the inner element holds the actual content so we can
+       compare scrollHeight vs. clientHeight for the overflow check. */
+    .leader-card-bio {
+      margin-top: 10px;
       font-size: 12px;
       color: #444;
       line-height: 1.55;
+      max-height: 6.5em;
+      overflow: hidden;
+      transition: max-height 0.2s ease;
+      width: 100%;
     }
+
+    .leader-card--expanded .leader-card-bio {
+      max-height: none;
+    }
+
+    .leader-card-bio-inner > * { margin: 0 0 0.55em; }
+    .leader-card-bio-inner > *:last-child { margin-bottom: 0; }
+
+    .leader-card-readmore {
+      margin-top: 10px;
+      padding: 0;
+      background: none;
+      border: none;
+      color: #5b7f9e;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      align-self: flex-start;
+    }
+    .leader-card-readmore:hover { opacity: 0.7; }
+
+    /* Variant accents — picks up the existing palette so the two roles
+       still read as distinct at a glance. */
+    .leader-card--school-leader     { border-top-color: #aed1db; }
+    .leader-card--school-leader     .leader-card-role { color: #5b7f9e; }
+    .leader-card--expedition-leader { border-top-color: #d6a380; }
+    .leader-card--expedition-leader .leader-card-role { color: #d6a380; }
 
     /* FLIGHTS & INSURANCE */
     .flights-grid {
@@ -2172,42 +2235,103 @@
 
       const section = document.createElement("div");
       section.className = "teacher-section";
-      section.innerHTML = `<div class="teacher-section-label">SCHOOL LEADERS</div>`;
+      section.innerHTML = `<div class="teacher-section-label">SCHOOL CONTACTS</div>`;
 
       const grid = document.createElement("div");
       grid.className = "teacher-grid";
 
-      // Teachers — full contact card (name + email + phone)
+      // School leaders (HubSpot association label "Teacher") — full contact
+      // card with optional headshot photo at top.
       teachers.forEach(t => {
-        grid.innerHTML += `
-          <div class="teacher-card">
-            <h4>${attrEsc(t.name || "Unknown")}</h4>
-            <div class="teacher-contact">
+        grid.innerHTML += renderLeaderCard({
+          variant: "school-leader",
+          roleLabel: "SCHOOL LEADER",
+          name: t.name,
+          photoUrl: t.photoUrl,
+          contactHtml: `
+            <div class="leader-card-contact">
               ${t.email ? `<a href="mailto:${attrEsc(t.email)}">${attrEsc(t.email)}</a><br>` : ""}
               ${t.phone ? `<a href="tel:${attrEsc(t.phone)}">${attrEsc(t.phone)}</a>` : ""}
-            </div>
-          </div>
-        `;
+            </div>`,
+          bioHtml: ""
+        });
       });
 
-      // Trip leaders — name + bio only (no email/phone exposed in this view)
+      // Expedition leaders (HubSpot association label "Trip Leader") — name +
+      // bio only (no email/phone exposed in the parent-facing view).
       tripLeaders.forEach(l => {
         const bioHtml = l.bio ? applyTextBreaks(l.bio) : "";
-        grid.innerHTML += `
-          <div class="teacher-card teacher-card--trip-leader">
-            <div class="teacher-card-role">EXPEDITION LEADER</div>
-            <h4>${attrEsc(l.name || "Unknown")}</h4>
-            ${bioHtml ? `<div class="teacher-bio">${bioHtml}</div>` : ""}
-          </div>
-        `;
+        grid.innerHTML += renderLeaderCard({
+          variant: "expedition-leader",
+          roleLabel: "EXPEDITION LEADER",
+          name: l.name,
+          photoUrl: l.photoUrl,
+          contactHtml: "",
+          bioHtml
+        });
       });
 
       section.appendChild(grid);
       content.appendChild(section);
 
+      // After the grid is in the DOM, decide which bios actually overflow
+      // their clamp and need a "Read more" toggle. Done as a post-render
+      // pass because we need real layout heights.
+      wireLeaderCardReadMore(section);
+
     } catch (err) {
       console.error("Teacher load error:", err);
     }
+  }
+
+  // Renders one school-leader / expedition-leader card. Same markup for
+  // both — only the variant class and role label differ — so spacing,
+  // photo size, and clamp behaviour stay aligned across the grid.
+  function renderLeaderCard({ variant, roleLabel, name, photoUrl, contactHtml, bioHtml }) {
+    const photoHtml = photoUrl
+      ? `<img class="leader-card-photo" src="${attrEsc(photoUrl)}" alt="${attrEsc(name || roleLabel)}" loading="lazy" onerror="this.classList.add('leader-card-photo--missing');">`
+      : `<div class="leader-card-photo leader-card-photo--placeholder" aria-hidden="true"></div>`;
+
+    return `
+      <div class="leader-card leader-card--${variant}">
+        ${photoHtml}
+        <div class="leader-card-role">${attrEsc(roleLabel)}</div>
+        <h4 class="leader-card-name">${attrEsc(name || "Unknown")}</h4>
+        ${contactHtml || ""}
+        ${bioHtml ? `<div class="leader-card-bio" data-bio><div class="leader-card-bio-inner">${bioHtml}</div></div>` : ""}
+      </div>
+    `;
+  }
+
+  // Post-render pass that walks the cards just rendered and decides which
+  // bios actually overflow the clamp. Cards whose bio text fits get nothing
+  // extra; cards that overflow get a "Read more" link wired up to expand.
+  // We do this after layout because we need real measured heights — there
+  // is no reliable CSS-only way to "show toggle only if clamped".
+  function wireLeaderCardReadMore(section) {
+    const cards = section.querySelectorAll(".leader-card");
+    cards.forEach(card => {
+      const bio = card.querySelector("[data-bio]");
+      if (!bio) return;
+      const inner = bio.querySelector(".leader-card-bio-inner");
+      if (!inner) return;
+
+      // If the inner content is taller than the clamped wrapper, we need
+      // a toggle. A small fudge guards against fractional-pixel false
+      // positives in some browsers.
+      const overflows = inner.scrollHeight > bio.clientHeight + 2;
+      if (!overflows) return;
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "leader-card-readmore";
+      toggle.textContent = "Read more";
+      toggle.addEventListener("click", () => {
+        const expanded = card.classList.toggle("leader-card--expanded");
+        toggle.textContent = expanded ? "Read less" : "Read more";
+      });
+      card.appendChild(toggle);
+    });
   }
 
   async function loadStudentList(content, options = {}) {
