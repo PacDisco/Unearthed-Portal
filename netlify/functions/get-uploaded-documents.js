@@ -215,11 +215,13 @@ async function loadFormData(formId, cleanEmail, apiKey, baseUrl) {
         uploadedAt: submission.created_at || null,
         fieldLabel: f.fieldLabel,
         filename,
-        // Route the file through our get-document proxy so the parent
-        // doesn't need a Jotform login to view it. The original Jotform
-        // URL is encoded as a query param; the proxy validates the host,
-        // appends our JOTFORM_API_KEY server-side, and streams the bytes.
-        url: `/.netlify/functions/get-document?url=${encodeURIComponent(f.url)}`
+        // Route the file through our /document-proxy EDGE function so the
+        // parent doesn't need a Jotform login to view it. We use the edge
+        // function (not /.netlify/functions/get-document) because uploaded
+        // documents — passport scans, medical PDFs, photos — can be larger
+        // than the 6MB synchronous-function cap. The edge function streams
+        // the upstream body straight through with no base64 overhead.
+        url: `/document-proxy?url=${encodeURIComponent(f.url)}`
       });
     }
   }
