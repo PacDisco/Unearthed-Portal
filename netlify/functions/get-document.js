@@ -59,10 +59,17 @@ export async function handler(event) {
     const upstream = await fetch(target.toString(), { redirect: "follow" });
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => "");
+      // Log to Netlify function logs so we can diagnose why a particular
+      // file fetch failed (HIPAA-encrypted form, key scope, regional CDN, etc).
+      console.warn(
+        `[get-document] upstream non-OK ${upstream.status} for ${target.host}${target.pathname} — ${text.slice(0, 200)}`
+      );
       return {
         statusCode: upstream.status,
         body: JSON.stringify({
           error: `Jotform returned ${upstream.status}`,
+          host: target.host,
+          path: target.pathname,
           details: text.slice(0, 500)
         })
       };
