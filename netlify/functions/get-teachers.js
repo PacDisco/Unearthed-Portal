@@ -70,26 +70,39 @@ export async function handler(event) {
       )
     ]);
 
-    // 3a. Collect every numeric File ID we just got from any contact's
-    //     expedition_leader_photo, and resolve them all in parallel against
-    //     HubSpot's Files API. The result is a Map<fileId, url> we can use
-    //     during shaping. Non-numeric values (someone pasted a URL into a
-    //     File property by mistake, etc.) are passed through downstream.
+    // 3b. Admins (Program Administrator, Operations Manager) are looked up
+    //     globally — they're not associated to any specific portal. Showing
+    //     them on every trip's Expedition Overview is the whole point of
+    //     the admin role. We search by the admin_role contact property and
+    //     fold the results in alongside teachers + trip leaders.
+    const adminsRaw = await fetchAdminContacts(headers);
+
+    // 3c. Collect every numeric File ID we just got from any contact's
+    //     expedition_leader_photo (across all three buckets), and resolve
+    //     them all in parallel against HubSpot's Files API. The result is
+    //     a Map<fileId, url> we can use during shaping. Non-numeric values
+    //     (someone pasted a URL into a File property by mistake, etc.)
+    //     are passed through downstream.
     const fileUrlMap = await resolveFileIds(
-      collectFileIds([...teachersRaw, ...tripLeadersRaw], "expedition_leader_photo"),
+      collectFileIds(
+        [...teachersRaw, ...tripLeadersRaw, ...adminsRaw],
+        "expedition_leader_photo"
+      ),
       headers
     );
 
     const teachers    = teachersRaw.map(c    => shapeTeacher(c, fileUrlMap));
     const tripLeaders = tripLeadersRaw.map(l => shapeTripLeader(l, fileUrlMap));
+    const admins      = adminsRaw.map(a      => shapeAdmin(a, fileUrlMap));
 
     // Sort each list alphabetically by name
     teachers.sort((a, b) => a.name.localeCompare(b.name));
     tripLeaders.sort((a, b) => a.name.localeCompare(b.name));
+    admins.sort((a, b) => a.name.localeCompare(b.name));
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ teachers, tripLeaders })
+      body: JSON.stringify({ teachers, tripLeaders, admins })
     };
 
   } catch (err) {
@@ -141,6 +154,62 @@ function shapeTripLeader(c, fileUrlMap) {
   return {
     name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
     bio:      c.properties.trip_leader_bio || "",
+    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
+  };
+}
+
+// Looks up every contact whose admin_role is set to one of the recognised
+// admin roles. These don't need to be associated to the trip — having a
+// non-empty admin_role IS the access mechanism. Returns the raw HubSpot
+// contact records (same shape as fetchContactRecords) so they can be
+// folded into the same File-ID resolution pass as the other buckets.
+async function fetchAdminContacts(headers) {
+  const ROLES = ["Program Administrator", "Operations Manager"];
+
+  const res = await fetch(
+    "https://api.hubapi.com/crm/v3/objects/contacts/search",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        // OR group: admin_role equals any one of the recognised roles.
+        filterGroups: ROLES.map(role => ({
+          filters: [{
+            propertyName: "admin_role",
+            operator: "EQ",
+            value: role
+          }]
+        })),
+        properties: [
+          "firstname", "lastname", "email", "phone",
+          "admin_role", "expedition_leader_photo",
+          // Reuse the same bio field as trip leaders so admins can have a
+          // bio shown under their card on the Overview without us inventing
+          // a new property.
+          "trip_leader_bio"
+        ],
+        limit: 100
+      })
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.warn(`[get-teachers] admin search failed ${res.status}: ${text.slice(0, 200)}`);
+    return [];
+  }
+
+  const data = await res.json();
+  return data.results || [];
+}
+
+function shapeAdmin(c, fileUrlMap) {
+  return {
+    name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
+    email:    c.properties.email || "",
+    phone:    c.properties.phone || "",
+    bio:      c.properties.trip_leader_bio || "",
+    role:     c.properties.admin_role || "",
     photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
   };
 }
