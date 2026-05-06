@@ -53,10 +53,22 @@ export async function handler(event) {
       .map(r => r.toObjectId);
 
     // 3. Fetch contact details for each bucket in parallel.
-    //    Trip leaders need trip_leader_bio in addition to the basics.
+    //    Both buckets pull `expedition_leader_photo` (the staff headshot URL
+    //    stored as a custom property on the contact). Trip leaders also pull
+    //    trip_leader_bio for the blurb under their photo on the first tab.
     const [teachers, tripLeaders] = await Promise.all([
-      fetchContacts(teacherIds, headers, ["firstname", "lastname", "email", "phone"], shapeTeacher),
-      fetchContacts(tripLeaderIds, headers, ["firstname", "lastname", "trip_leader_bio"], shapeTripLeader)
+      fetchContacts(
+        teacherIds,
+        headers,
+        ["firstname", "lastname", "email", "phone", "expedition_leader_photo"],
+        shapeTeacher
+      ),
+      fetchContacts(
+        tripLeaderIds,
+        headers,
+        ["firstname", "lastname", "trip_leader_bio", "expedition_leader_photo"],
+        shapeTripLeader
+      )
     ]);
 
     // Sort each list alphabetically by name
@@ -102,15 +114,50 @@ async function fetchContacts(ids, headers, properties, shape) {
 
 function shapeTeacher(c) {
   return {
-    name: `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
-    email: c.properties.email || "",
-    phone: c.properties.phone || ""
+    name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
+    email:    c.properties.email || "",
+    phone:    c.properties.phone || "",
+    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo)
   };
 }
 
 function shapeTripLeader(c) {
   return {
-    name: `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
-    bio:  c.properties.trip_leader_bio || ""
+    name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
+    bio:      c.properties.trip_leader_bio || "",
+    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo)
   };
+}
+
+// Returns a browser-loadable URL for a leader's headshot, or null if there
+// isn't one configured. Jotform-hosted images need the API key appended,
+// which we do via /document-proxy. HubSpot file-manager URLs and arbitrary
+// public CDN URLs are passed through as-is — they're already public.
+//
+// Edge cases handled:
+//   - Empty / whitespace-only values → null (don't render a broken <img>).
+//   - Multiple URLs in one field (e.g. someone pasted two links separated
+//     by a newline or comma) → use the first parseable one.
+//   - Malformed URLs → null.
+function resolvePhotoUrl(raw) {
+  if (!raw) return null;
+  const first = String(raw).split(/[\s,]+/).map(s => s.trim()).find(Boolean);
+  if (!first) return null;
+
+  let parsed;
+  try {
+    parsed = new URL(first);
+  } catch (_) {
+    return null;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const isJotform = (
+    host === "jotform.com" || host.endsWith(".jotform.com") ||
+    host === "jotfor.ms"   || host.endsWith(".jotfor.ms")
+  );
+  if (isJotform) {
+    return `/document-proxy?url=${encodeURIComponent(first)}`;
+  }
+  return first;
 }
