@@ -462,6 +462,98 @@
 
     .application-field-file:hover { opacity: 0.85; }
 
+    /* Application-info modal (teacher-tab popup) */
+    .app-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .app-modal[hidden] { display: none; }
+
+    .app-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(35, 31, 32, 0.55);
+      backdrop-filter: blur(2px);
+    }
+
+    .app-modal-content {
+      position: relative;
+      background: white;
+      border: 1px solid #e2decf;
+      width: 100%;
+      max-width: 720px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+
+    .app-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid #e2decf;
+    }
+
+    .app-modal-header h2 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #2d6b74;
+      text-transform: uppercase;
+    }
+
+    .app-modal-header .app-modal-subject {
+      display: block;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #231f20;
+      text-transform: none;
+      margin-top: 4px;
+    }
+
+    .app-modal-close {
+      background: transparent;
+      border: none;
+      color: #999;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 10px;
+      transition: color 0.2s ease;
+    }
+
+    .app-modal-close:hover { color: #2d6b74; }
+
+    .app-modal-body {
+      padding: 18px 24px 24px;
+      overflow-y: auto;
+      flex: 1 1 auto;
+    }
+
+    .app-modal-meta {
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      color: #999;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    @media (max-width: 480px) {
+      .app-modal { padding: 0; }
+      .app-modal-content { max-height: 100vh; }
+    }
+
     /* EXPEDITION CARDS */
     .expedition-grid {
       display: grid;
@@ -1039,6 +1131,23 @@
   <div class="sheet-actions">
     <button class="sheet-btn primary" onclick="dismissSheet()">GOT IT</button>
     <button class="sheet-btn ghost" onclick="dismissSheet()">NOT NOW</button>
+  </div>
+</div>
+
+<!-- Application Information modal (teacher tab) -->
+<div id="appModal" class="app-modal" hidden>
+  <div class="app-modal-backdrop" onclick="closeApplicationModal()"></div>
+  <div class="app-modal-content" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+    <div class="app-modal-header">
+      <div>
+        <h2 id="appModalTitle">APPLICATION INFORMATION</h2>
+        <span id="appModalSubject" class="app-modal-subject"></span>
+      </div>
+      <button class="app-modal-close" type="button" onclick="closeApplicationModal()" aria-label="Close">&times;</button>
+    </div>
+    <div id="appModalBody" class="app-modal-body">
+      <div class="application-detail-empty">LOADING…</div>
+    </div>
   </div>
 </div>
 
@@ -1662,7 +1771,7 @@
         content.innerHTML = portalData[field] || "";
         content.style.opacity = 1;
         styleLinksAsButtons();
-        await loadStudentList(content);
+        await loadStudentList(content, { applicationModal: true });
         return;
       }
 
@@ -1954,6 +2063,7 @@
 
   async function loadStudentList(content, options = {}) {
     const expandable = !!options.expandable;
+    const showAppModal = !!options.applicationModal;
 
     const loader = document.createElement("div");
     loader.id = "studentLoader";
@@ -1991,15 +2101,26 @@
             `).join("")
           : "<div class='parent-item' style='color:#999;'>No parents linked</div>";
 
-        const expandBlock = expandable
-          ? `
+        let expandBlock = "";
+        if (expandable) {
+          expandBlock = `
             <button class="student-expand-btn" type="button"
                     onclick="toggleStudentExpand(this)">
               VIEW APPLICATION DETAILS
             </button>
             <div class="student-card-details" data-email="${attrEsc(student.email || "")}" hidden></div>
-          `
-          : "";
+          `;
+        } else if (showAppModal) {
+          // Teacher tab: opens a modal with the FULL application submission.
+          expandBlock = `
+            <button class="student-expand-btn" type="button"
+                    data-email="${attrEsc(student.email || "")}"
+                    data-student-name="${attrEsc(student.name || "")}"
+                    onclick="openApplicationModal(this.dataset.email, this.dataset.studentName)">
+              APPLICATION INFORMATION
+            </button>
+          `;
+        }
 
         const photoHtml = student.portraitUrl
           ? `<img class="student-card-photo" src="${attrEsc(student.portraitUrl)}" alt="${attrEsc(student.name || "Student")}" loading="lazy" onerror="this.style.display='none';">`
@@ -2167,6 +2288,109 @@
     const cls = isYes ? "is-yes" : (isNo ? "is-no" : "");
     valueHtml = `<span class="application-field-value ${cls}">${attrEsc(raw || "—")}</span>`;
 
+    return `
+      <div class="application-field">
+        <div class="application-field-label">${attrEsc(label)}</div>
+        <div class="application-field-value">${valueHtml}</div>
+      </div>
+    `;
+  }
+
+  // ----- Teacher tab: full-application popup -----
+  // Shows EVERY answered field from the student's Jotform application
+  // submission in a modal. Reuses the same get-application-data endpoint
+  // as the Trip Leader inline expand, but renders the full ordered list of
+  // fields rather than the medical-focused whitelist.
+  async function openApplicationModal(email, name) {
+    const modal = document.getElementById("appModal");
+    const subject = document.getElementById("appModalSubject");
+    const body = document.getElementById("appModalBody");
+    if (!modal || !body) return;
+
+    if (subject) subject.textContent = name || "";
+    body.innerHTML = `<div class="application-detail-empty">LOADING APPLICATION…</div>`;
+    modal.hidden = false;
+    document.body.style.overflow = "hidden";
+
+    if (!email) {
+      body.innerHTML = `<div class="application-detail-empty">No email on this student record.</div>`;
+      return;
+    }
+
+    try {
+      const res = await fetch(`/.netlify/functions/get-application-data?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      body.innerHTML = renderFullApplicationDetails(data);
+    } catch (err) {
+      console.error("Application modal fetch error:", err);
+      body.innerHTML = `<div class="application-detail-empty">Could not load application details.</div>`;
+    }
+  }
+
+  function closeApplicationModal() {
+    const modal = document.getElementById("appModal");
+    if (modal) modal.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  // ESC closes the modal
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const modal = document.getElementById("appModal");
+      if (modal && !modal.hidden) closeApplicationModal();
+    }
+  });
+
+  function renderFullApplicationDetails(data) {
+    if (!data || data.error) {
+      return `<div class="application-detail-empty">Could not load application details${data?.error ? `: ${attrEsc(data.error)}` : ""}.</div>`;
+    }
+    if (!data.found) {
+      return `<div class="application-detail-empty">No application form submission found for this email.</div>`;
+    }
+
+    const fields = Array.isArray(data.fields) ? data.fields : [];
+
+    let metaHtml = "";
+    if (data.submittedAt) {
+      const d = new Date(data.submittedAt);
+      if (!isNaN(d.getTime())) {
+        const when = d.toLocaleDateString("en-NZ", { year: "numeric", month: "short", day: "numeric" });
+        metaHtml = `<div class="app-modal-meta">SUBMITTED ${attrEsc(when.toUpperCase())}</div>`;
+      }
+    }
+
+    if (fields.length === 0) {
+      return metaHtml + `<div class="application-detail-empty">No fields in this submission.</div>`;
+    }
+
+    return metaHtml + fields.map(renderFullApplicationField).join("");
+  }
+
+  function renderFullApplicationField(field) {
+    const label = field.label || "";
+    const t = String(field.type || "").toLowerCase();
+
+    // File-upload fields → list of VIEW links routed through the get-document
+    // proxy so they don't require a Jotform login.
+    if (t === "control_fileupload" && Array.isArray(field.value)) {
+      const links = field.value
+        .filter(Boolean)
+        .map(url => `<a href="/.netlify/functions/get-document?url=${encodeURIComponent(url)}" target="_blank" rel="noopener" class="application-field-file">VIEW</a>`)
+        .join("");
+      return `
+        <div class="application-field">
+          <div class="application-field-label">${attrEsc(label)}</div>
+          <div class="application-field-value">${links || '<span class="application-field-value is-no">—</span>'}</div>
+        </div>
+      `;
+    }
+
+    const raw = field.value == null ? "" : String(field.value).trim();
+    const isYes = /^yes$/i.test(raw);
+    const isNo = /^no$/i.test(raw);
+    const cls = isYes ? "is-yes" : (isNo ? "is-no" : "");
+    const valueHtml = `<span class="application-field-value ${cls}">${attrEsc(raw || "—")}</span>`;
     return `
       <div class="application-field">
         <div class="application-field-label">${attrEsc(label)}</div>
