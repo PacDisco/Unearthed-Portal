@@ -159,9 +159,11 @@
 </div>
 
 <script>
-  // If already logged in go straight to portal
+  // If already logged in go straight to the right landing page.
+  // Admins land on /admin.html (the trip picker); everyone else on /index.html.
   if (sessionStorage.getItem("portalEmail")) {
-    window.location.href = "/index.html";
+    const role = sessionStorage.getItem("adminRole");
+    window.location.href = role ? "/admin.html" : "/index.html";
   }
 
   function showLogin() {
@@ -207,8 +209,15 @@
 
       if (data.success) {
         sessionStorage.setItem("portalEmail", data.email || email);
+        // Stash admin metadata so admin.html and index.html can detect
+        // the role without a second login round-trip.
+        if (data.adminRole) sessionStorage.setItem("adminRole", data.adminRole);
+        else sessionStorage.removeItem("adminRole");
+        if (data.firstName) sessionStorage.setItem("firstName", data.firstName);
+        else sessionStorage.removeItem("firstName");
         setTimeout(() => {
-          window.location.href = "/index.html";
+          // Admins → /admin.html (trip picker); everyone else → /index.html.
+          window.location.href = data.adminRole ? "/admin.html" : "/index.html";
         }, 100);
       } else if (data.error === "no_password") {
         error.style.display = "block";
