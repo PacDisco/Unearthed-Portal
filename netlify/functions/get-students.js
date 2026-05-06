@@ -248,10 +248,13 @@ async function fetchStudentPayments(contactId, headers) {
 }
 
 // Builds an email → portrait-photo URL map by walking every submission of the
-// Jotform application form (id from JOTFORM_APPLICATION_FORM_ID env var,
-// default 251396787451873). For each submission we look at the email-control
-// answer and any control_fileupload whose label mentions "portrait" — if both
-// are present, we record the (lowercased) email → first photo URL.
+// Jotform application form(s). Form IDs come from the JOTFORM_APPLICATION_FORM_ID
+// env var (comma-separated list); default falls back to the original application
+// form plus its successor so students who used the newer form aren't missed.
+//
+// For each submission we look at the email-control answer and any
+// control_fileupload whose label mentions "portrait" — if both are present, we
+// record the (lowercased) email → first photo URL. Most recent submission wins.
 //
 // Failures are swallowed silently: if the API key is missing or the call
 // fails, we just return an empty map and student cards render without photos.
@@ -259,25 +262,34 @@ async function loadPortraitsByEmail() {
   const empty = new Map();
   if (!process.env.JOTFORM_API_KEY) return empty;
 
-  const formId = (process.env.JOTFORM_APPLICATION_FORM_ID || "251396787451873").toString();
+  const formIds = (process.env.JOTFORM_APPLICATION_FORM_ID
+    || "251396787451873,253477140703050")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  if (formIds.length === 0) return empty;
+
   const apiKey = process.env.JOTFORM_API_KEY;
   const baseUrl = (process.env.JOTFORM_BASE_URL || "https://api.jotform.com").replace(/\/+$/, "");
 
   let allSubmissions = [];
   try {
-    let offset = 0;
-    while (true) {
-      const url = `${baseUrl}/form/${encodeURIComponent(formId)}/submissions` +
-        `?apiKey=${encodeURIComponent(apiKey)}&limit=1000&offset=${offset}`;
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
-      if (!res.ok) return empty;
-      const data = await res.json();
-      const page = Array.isArray(data?.content) ? data.content : [];
-      allSubmissions.push(...page);
-      if (page.length < 1000) break;
-      offset += 1000;
-      if (offset >= 5000) break; // safety net
-    }
+    const perForm = await Promise.all(formIds.map(async (formId) => {
+      const list = [];
+      let offset = 0;
+      while (true) {
+        const url = `${baseUrl}/form/${encodeURIComponent(formId)}/submissions` +
+          `?apiKey=${encodeURIComponent(apiKey)}&limit=1000&offset=${offset}`;
+        const res = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!res.ok) return [];
+        const data = await res.json();
+        const page = Array.isArray(data?.content) ? data.content : [];
+        list.push(...page);
+        if (page.length < 1000) break;
+        offset += 1000;
+        if (offset >= 5000) break; // safety net
+      }
+      return list;
+    }));
+    allSubmissions = perForm.flat();
   } catch (_) {
     return empty;
   }
