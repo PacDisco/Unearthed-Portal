@@ -1668,30 +1668,55 @@
       }
 
       portalData = data;
-      if (adminViewing) renderAdminBanner();
 
-      document.getElementById("title").innerText =
-        portalData.portal_title || "UNEARTHED";
+      // Each step below is independently guarded. We log each one as
+      // it runs so a Network/Console screenshot can pinpoint exactly
+      // where things break, and a single broken step doesn't blow up
+      // the whole page (which previously would land the user on a
+      // bare "Error loading portal" with no diagnostic).
+      const safeRun = (name, fn) => {
+        try { fn(); }
+        catch (err) { console.error(`[init] step "${name}" threw:`, err); }
+      };
 
-      document.getElementById("destination").innerText =
-        portalData.destination ? `DESTINATION: ${portalData.destination}` : "STUDENT PORTAL";
-
-      if (portalData.price) {
-        document.getElementById("programPrice").innerText =
-          `PRICE: $${parseFloat(portalData.price).toLocaleString()}`;
-      }
-
-      applyVisibility(portalData.labels);
-      assignTileColors();
-      applyMessageBoardBadge();
-      loadSection("trip_information_content");
-      showInstallPrompt();
+      safeRun("renderAdminBanner", () => { if (adminViewing) renderAdminBanner(); });
+      safeRun("set title",         () => {
+        document.getElementById("title").innerText = portalData.portal_title || "UNEARTHED";
+      });
+      safeRun("set destination",   () => {
+        document.getElementById("destination").innerText =
+          portalData.destination ? `DESTINATION: ${portalData.destination}` : "STUDENT PORTAL";
+      });
+      safeRun("set price",         () => {
+        if (portalData.price) {
+          document.getElementById("programPrice").innerText =
+            `PRICE: $${parseFloat(portalData.price).toLocaleString()}`;
+        }
+      });
+      safeRun("applyVisibility",        () => applyVisibility(portalData.labels));
+      safeRun("assignTileColors",       () => assignTileColors());
+      safeRun("applyMessageBoardBadge", () => applyMessageBoardBadge());
+      safeRun("loadSection",            () => loadSection("trip_information_content"));
+      safeRun("showInstallPrompt",      () => showInstallPrompt());
 
     } catch (err) {
+      console.error("[init] threw:", err);
       if (retries > 0) {
         setTimeout(() => init(retries - 1), 500);
       } else {
-        document.body.innerHTML = `<h1>Error loading portal</h1>`;
+        // Final-attempt failure: surface what threw + the URL we tried,
+        // instead of a bare "Error loading portal" with no context.
+        const portalUrl = adminViewing
+          ? `/.netlify/functions/portal?portalId=${encodeURIComponent(adminPortalId)}`
+          : `/.netlify/functions/portal?email=${encodeURIComponent(email)}`;
+        const safe = (s) => String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        document.body.innerHTML = `<div style="padding:32px; font-family:Inter,sans-serif;">
+          <h1 style="color:#c0392b;">Error loading portal</h1>
+          <p>The portal request failed three times.</p>
+          <p><strong>URL:</strong> <code>${safe(portalUrl)}</code></p>
+          <p><strong>Error:</strong> <code>${safe(err && (err.message || err))}</code></p>
+        </div>`;
       }
     }
   }
