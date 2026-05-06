@@ -1299,12 +1299,30 @@
     { label: "Child Protection Policy",        prop: "child_protection_policy" }
   ];
 
-  // Renders the Trip Leader resource-link grid, hiding any field whose
-  // URL is blank on both the trip record and the global record. Returns
-  // an empty string when nothing is configured so we don't draw an empty
-  // section header.
-  function renderTripLeaderLinks() {
-    const cards = TRIP_LEADER_LINKS
+  // ============================================================
+  // === EDIT THIS LIST TO ADD/RENAME A TEACHER LINK ===
+  // Same shape as TRIP_LEADER_LINKS above. Renders at the top of the
+  // Teachers tab. The properties below are the same HubSpot fields
+  // used by the Trip Leader tab — populating them once on the trip
+  // record (or the global record) will surface them on whichever
+  // tabs reference them, so you don't need duplicate fields per tab.
+  // ============================================================
+  const TEACHER_LINKS = [
+    { label: "Student Manual",       prop: "student_manual" },
+    { label: "Leader Manual",        prop: "leader_manual" },
+    { label: "Generic RA",           prop: "generic_risk_assessment" },
+    { label: "Leader Handbook",      prop: "leader_handbook" },
+    { label: "Country RA",           prop: "country_risk_assessment" },
+    { label: "Expedition Budget",    prop: "expedition_budget" },
+    { label: "Country Contact List", prop: "country_contact_list" }
+  ];
+
+  // Generic resource-link grid renderer used by the Trip Leader and
+  // Teacher tabs. Hides any field whose URL is blank on both the trip
+  // record and the global record. Returns an empty string when nothing
+  // is configured so we don't draw an empty section.
+  function renderResourceLinkGrid(fields) {
+    const cards = (fields || [])
       .filter(f => {
         const v = portalData[f.prop];
         return v && String(v).trim();
@@ -1883,7 +1901,16 @@
       }
 
       if (field === "teacher_information_content") {
-        content.innerHTML = portalData[field] || "";
+        // Teacher tab — same three-section layout as Trip Leader:
+        //   1. Resource link grid (Student Manual, Generic RA, etc.).
+        //      Configure via TEACHER_LINKS above. Hidden when all URLs
+        //      are blank on both the trip and global records.
+        //   2. The teacher_information_content rich-text block.
+        //   3. Student list, with each card opening the full
+        //      Application Information modal.
+        const linksHtml    = renderResourceLinkGrid(TEACHER_LINKS);
+        const richTextHtml = portalData[field] || "";
+        content.innerHTML  = linksHtml + richTextHtml;
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadStudentList(content, { applicationModal: true });
@@ -1900,9 +1927,9 @@
         //      Portal record — anything the school types into HubSpot.
         //   3. The student list, with each card opening a Medical
         //      Information modal (filtered subset of the application form).
-        const linksHtml   = renderTripLeaderLinks();
+        const linksHtml    = renderResourceLinkGrid(TRIP_LEADER_LINKS);
         const richTextHtml = portalData[field] || "";
-        content.innerHTML = linksHtml + richTextHtml;
+        content.innerHTML  = linksHtml + richTextHtml;
         content.style.opacity = 1;
         styleLinksAsButtons();
         await loadStudentList(content, { expandable: true });
