@@ -52,24 +52,36 @@ export async function handler(event) {
       .filter(r => r.associationTypes?.some(t => t.label === "Trip Leader"))
       .map(r => r.toObjectId);
 
-    // 3. Fetch contact details for each bucket in parallel.
-    //    Both buckets pull `expedition_leader_photo` (the staff headshot URL
-    //    stored as a custom property on the contact). Trip leaders also pull
-    //    trip_leader_bio for the blurb under their photo on the first tab.
-    const [teachers, tripLeaders] = await Promise.all([
-      fetchContacts(
+    // 3. Fetch contact records for each bucket in parallel.
+    //    Both buckets pull `expedition_leader_photo` (the staff headshot stored
+    //    as a HubSpot *File* property — meaning the property value is a
+    //    numeric File ID, not a URL). Trip leaders also pull trip_leader_bio
+    //    for the blurb under their photo on the first tab.
+    const [teachersRaw, tripLeadersRaw] = await Promise.all([
+      fetchContactRecords(
         teacherIds,
         headers,
-        ["firstname", "lastname", "email", "phone", "expedition_leader_photo"],
-        shapeTeacher
+        ["firstname", "lastname", "email", "phone", "expedition_leader_photo"]
       ),
-      fetchContacts(
+      fetchContactRecords(
         tripLeaderIds,
         headers,
-        ["firstname", "lastname", "trip_leader_bio", "expedition_leader_photo"],
-        shapeTripLeader
+        ["firstname", "lastname", "trip_leader_bio", "expedition_leader_photo"]
       )
     ]);
+
+    // 3a. Collect every numeric File ID we just got from any contact's
+    //     expedition_leader_photo, and resolve them all in parallel against
+    //     HubSpot's Files API. The result is a Map<fileId, url> we can use
+    //     during shaping. Non-numeric values (someone pasted a URL into a
+    //     File property by mistake, etc.) are passed through downstream.
+    const fileUrlMap = await resolveFileIds(
+      collectFileIds([...teachersRaw, ...tripLeadersRaw], "expedition_leader_photo"),
+      headers
+    );
+
+    const teachers    = teachersRaw.map(c    => shapeTeacher(c, fileUrlMap));
+    const tripLeaders = tripLeadersRaw.map(l => shapeTripLeader(l, fileUrlMap));
 
     // Sort each list alphabetically by name
     teachers.sort((a, b) => a.name.localeCompare(b.name));
@@ -91,7 +103,11 @@ export async function handler(event) {
 
 // ---------- helpers ----------
 
-async function fetchContacts(ids, headers, properties, shape) {
+// Reads a batch of contacts and returns the raw HubSpot result objects
+// (i.e. each item's `properties` is the keyed map of property values).
+// Used in place of the old fetchContacts/shape combo so we can take an
+// extra pass to resolve File IDs across the *combined* set of contacts.
+async function fetchContactRecords(ids, headers, properties) {
   if (!ids || ids.length === 0) return [];
 
   const res = await fetch(
@@ -109,55 +125,124 @@ async function fetchContacts(ids, headers, properties, shape) {
   if (!res.ok) return [];
 
   const data = await res.json();
-  return (data.results || []).map(shape);
+  return data.results || [];
 }
 
-function shapeTeacher(c) {
+function shapeTeacher(c, fileUrlMap) {
   return {
     name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
     email:    c.properties.email || "",
     phone:    c.properties.phone || "",
-    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo)
+    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
   };
 }
 
-function shapeTripLeader(c) {
+function shapeTripLeader(c, fileUrlMap) {
   return {
     name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
     bio:      c.properties.trip_leader_bio || "",
-    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo)
+    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
   };
 }
 
+// Walks every contact record and pulls out any value of `propName` that
+// looks like a HubSpot File ID (digits only). Used to build a deduped
+// list before the Files API resolution pass — multiple staff sharing the
+// same photo end up as one fetch.
+function collectFileIds(contactRecords, propName) {
+  const ids = new Set();
+  for (const c of contactRecords || []) {
+    const raw = c?.properties?.[propName];
+    if (!raw) continue;
+    // HubSpot File props sometimes return "12345" and sometimes "12345,67890"
+    // when multi-file; treat any digit-only token as a File ID candidate.
+    String(raw)
+      .split(/[\s,;]+/)
+      .map(s => s.trim())
+      .filter(s => /^\d+$/.test(s))
+      .forEach(s => ids.add(s));
+  }
+  return ids;
+}
+
+// Resolves each File ID against HubSpot's Files API and returns a
+// Map<fileId, fileUrl>. Files API returns one record per ID with a
+// publicly-loadable `url` field; we drop any that 404 or otherwise fail.
+async function resolveFileIds(idSet, headers) {
+  const map = new Map();
+  if (!idSet || idSet.size === 0) return map;
+
+  await Promise.all(
+    [...idSet].map(async (id) => {
+      try {
+        const res = await fetch(
+          `https://api.hubapi.com/files/v3/files/${encodeURIComponent(id)}`,
+          { headers }
+        );
+        if (!res.ok) {
+          console.warn(`[get-teachers] Files API ${res.status} for fileId ${id}`);
+          return;
+        }
+        const data = await res.json();
+        if (data && typeof data.url === "string" && data.url) {
+          map.set(id, data.url);
+        }
+      } catch (err) {
+        console.warn(`[get-teachers] Files API fetch failed for fileId ${id}:`, err?.message || err);
+      }
+    })
+  );
+
+  return map;
+}
+
 // Returns a browser-loadable URL for a leader's headshot, or null if there
-// isn't one configured. Jotform-hosted images need the API key appended,
-// which we do via /document-proxy. HubSpot file-manager URLs and arbitrary
-// public CDN URLs are passed through as-is — they're already public.
+// isn't one. The HubSpot File property stores a numeric File ID — we look
+// that up in the resolved fileUrlMap from /files/v3/files/{id}. Older
+// records may instead contain a raw URL (someone pasted one into the
+// property, or a previous version stored it as a string), so we still
+// handle that case as a fallback.
 //
-// Edge cases handled:
-//   - Empty / whitespace-only values → null (don't render a broken <img>).
-//   - Multiple URLs in one field (e.g. someone pasted two links separated
-//     by a newline or comma) → use the first parseable one.
-//   - Malformed URLs → null.
-function resolvePhotoUrl(raw) {
+// For a Jotform-hosted URL we route through /document-proxy so the API key
+// is added server-side; everything else (HubSpot CDN, public images) goes
+// through as-is.
+function resolvePhotoUrl(raw, fileUrlMap) {
   if (!raw) return null;
-  const first = String(raw).split(/[\s,]+/).map(s => s.trim()).find(Boolean);
+  const first = String(raw)
+    .split(/[\s,;]+/)
+    .map(s => s.trim())
+    .find(Boolean);
   if (!first) return null;
 
+  // Case 1: HubSpot File ID. Look up the resolved URL.
+  if (/^\d+$/.test(first) && fileUrlMap && fileUrlMap.has(first)) {
+    return wrapIfJotform(fileUrlMap.get(first));
+  }
+
+  // Case 2: An actual URL was stored on the property.
   let parsed;
   try {
     parsed = new URL(first);
   } catch (_) {
     return null;
   }
+  return wrapIfJotform(parsed.toString());
+}
 
+function wrapIfJotform(url) {
+  if (!url) return null;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (_) {
+    return null;
+  }
   const host = parsed.hostname.toLowerCase();
   const isJotform = (
     host === "jotform.com" || host.endsWith(".jotform.com") ||
     host === "jotfor.ms"   || host.endsWith(".jotfor.ms")
   );
-  if (isJotform) {
-    return `/document-proxy?url=${encodeURIComponent(first)}`;
-  }
-  return first;
+  return isJotform
+    ? `/document-proxy?url=${encodeURIComponent(url)}`
+    : url;
 }
