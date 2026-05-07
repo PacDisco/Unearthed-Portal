@@ -1635,6 +1635,10 @@
   // chose) and as_admin=1 (a flag that turns the portal into admin mode).
   const _viewParams = new URLSearchParams(window.location.search);
   const adminPortalId = _viewParams.get("portalId");
+  // Visit /index.html?debug_photos=1 to surface every leader-card photo
+  // URL on-page (and tag the card body with its load status) so a phone
+  // screenshot is enough to debug without DevTools.
+  const _DEBUG_PHOTOS = _viewParams.get("debug_photos") === "1";
   const isAdminView   = _viewParams.get("as_admin") === "1" && !!adminPortalId;
   const adminRole     = sessionStorage.getItem("adminRole");
   // Drop the flag if the user isn't actually logged in as an admin —
@@ -3126,6 +3130,12 @@
       + ` data-fb="${hasPhoto ? '0' : '1'}"`
       + ` onerror="${onErrorJs}">`;
 
+    const debugCaption = _DEBUG_PHOTOS
+      ? `<div class="leader-card-debug" style="margin-top:10px; padding:6px 8px; background:#fff3cd; border:1px solid #f1c40f; font-size:9px; line-height:1.3; word-break:break-all; color:#664d03;">
+          <strong>photoUrl:</strong> ${attrEsc(photoUrl || "(none — fallback only)")}
+        </div>`
+      : "";
+
     return `
       <div class="leader-card leader-card--${variant}">
         ${photoHtml}
@@ -3133,6 +3143,7 @@
         <h4 class="leader-card-name">${attrEsc(name || "Unknown")}</h4>
         ${contactHtml || ""}
         ${bioHtml ? `<div class="leader-card-bio" data-bio><div class="leader-card-bio-inner">${bioHtml}</div></div>` : ""}
+        ${debugCaption}
       </div>
     `;
   }
