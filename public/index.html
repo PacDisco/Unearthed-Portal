@@ -1669,15 +1669,35 @@
 
       portalData = data;
 
-      // Each step below is independently guarded. We log each one as
-      // it runs so a Network/Console screenshot can pinpoint exactly
-      // where things break, and a single broken step doesn't blow up
-      // the whole page (which previously would land the user on a
-      // bare "Error loading portal" with no diagnostic).
+      // Each step below is independently guarded. We log each one
+      // AND paint a yellow on-page error banner that lists every step
+      // that threw, so a screenshot of the failing page is enough to
+      // diagnose without needing DevTools open.
+      const stepFailures = [];
       const safeRun = (name, fn) => {
         try { fn(); }
-        catch (err) { console.error(`[init] step "${name}" threw:`, err); }
+        catch (err) {
+          const msg = (err && (err.message || String(err))) || "(unknown error)";
+          console.error(`[init] step "${name}" threw:`, err);
+          stepFailures.push({ step: name, message: msg });
+          renderInitFailureBanner();
+        }
       };
+      function renderInitFailureBanner() {
+        let banner = document.getElementById("initFailureBanner");
+        if (!banner) {
+          banner = document.createElement("div");
+          banner.id = "initFailureBanner";
+          banner.style.cssText = "position:fixed; top:0; left:0; right:0; background:#fff3cd; color:#664d03; border-bottom:2px solid #f1c40f; padding:10px 16px; font-family:Inter,sans-serif; font-size:12px; line-height:1.5; z-index:9999; box-shadow:0 2px 6px rgba(0,0,0,0.06); max-height:40vh; overflow:auto;";
+          document.body.insertBefore(banner, document.body.firstChild);
+        }
+        const safe = (s) => String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const rows = stepFailures.map(f =>
+          `<div><strong>${safe(f.step)}</strong>: ${safe(f.message)}</div>`
+        ).join("");
+        banner.innerHTML = `<div style="font-weight:600; margin-bottom:4px;">Init failures (${stepFailures.length}):</div>${rows}`;
+      }
 
       safeRun("renderAdminBanner", () => { if (adminViewing) renderAdminBanner(); });
       safeRun("set title",         () => {
