@@ -671,6 +671,34 @@
 
     .expedition-card .event-link:hover { opacity: 0.85; }
 
+    /* QUICK LINKS variant of the itinerary card — two stacked sections,
+       each with a small label + a button-like link beneath. */
+    .quick-links-card .quick-link-row + .quick-link-row {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #f0ede6;
+    }
+    .quick-links-card .quick-link-row-label {
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 6px;
+    }
+    /* Match the existing event-link button styling for the new
+       button-as-link in the EDIT APPLICATION row. */
+    .quick-links-card .event-link--app {
+      background: #5b7f9e;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .quick-links-card .event-link--app:hover { opacity: 0.85; }
+    .quick-links-card .event-link--app:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
     /* Generic "Read more" clamp + toggle.
        Any element with .readmore-content gets clipped to ~5 lines until
        the user expands it. Add to any rendered block where the source
@@ -1739,6 +1767,43 @@
   // Opens a new tab synchronously inside the click event so popup blockers
   // don't bite, then navigates that tab once Stripe returns the session URL.
   // Falls back to the link's href (the intermediate page) on any failure.
+  // Lazy-fetches the logged-in user's most recent Jotform application
+  // submissionId and opens https://www.jotform.com/edit/{id} in a new
+  // tab. Pattern mirrors startCheckout — the popup is opened up-front
+  // so popup-blockers don't bite, then redirected once we have the URL.
+  // Falls back to an alert if nothing is found.
+  async function openApplicationEdit(btn) {
+    if (window.__appEditBusy) return false;
+    window.__appEditBusy = true;
+    const newWin = window.open("about:blank", "_blank");
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "LOADING…";
+    try {
+      const res = await fetch(`/.netlify/functions/get-application-data?email=${encodeURIComponent(email)}`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.found && data.submissionId) {
+        const editUrl = `https://www.jotform.com/edit/${encodeURIComponent(data.submissionId)}`;
+        if (newWin) newWin.location.href = editUrl;
+        else window.location.href = editUrl;
+        return false;
+      }
+      if (newWin) newWin.close();
+      alert("We couldn\u2019t find an application form submission for your email yet. " +
+            "If you\u2019ve recently submitted one, try again in a minute, " +
+            "or contact info@unearthededucation.org.");
+    } catch (err) {
+      console.error("openApplicationEdit error:", err);
+      if (newWin) newWin.close();
+      alert("Could not load your application. Please try again in a minute.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+      window.__appEditBusy = false;
+    }
+    return false;
+  }
+
   async function startCheckout(event, el) {
     event.preventDefault();
     if (window.__stripeCheckoutBusy) return false;
@@ -1973,7 +2038,10 @@
     }
 
     const events = [
-      { title: "ITINERARY", isLink: true, url: p.itinerary },
+      // "Quick Links" replaces the old single-button itinerary card.
+      // Renders the itinerary URL and a button to open the user's own
+      // Jotform application for editing (lazy-fetched on click).
+      { title: "QUICK LINKS", isQuickLinks: true, itineraryUrl: p.itinerary },
       { title: "INITIAL PLANNING MEETING", date: p.initial_planning_meeting, info: p.initial_planning_meeting_information },
       { title: "TRAINING EVENT", date: p.training_event, info: p.training_event_information },
       { title: "FINAL BRIEFING", date: p.final_briefing, info: p.final_briefing_information },
@@ -1982,13 +2050,28 @@
     ];
 
     const grid = events.map(e => {
-      if (e.isLink) {
+      if (e.isQuickLinks) {
+        const itineraryHtml = e.itineraryUrl
+          ? `<a href="${e.itineraryUrl}" target="_blank" class="event-link">VIEW ITINERARY</a>`
+          : `<span class="tbc">TBC</span>`;
+        // The Edit Application button is wired to a click handler that
+        // lazily fetches the user's application submissionId and then
+        // opens jotform.com/edit/{id} in a new tab. Always rendered;
+        // graceful fallback if no submission is found.
+        const editAppHtml = `<button type="button"
+          class="event-link event-link--app"
+          onclick="return openApplicationEdit(this);">EDIT APPLICATION</button>`;
         return `
-          <div class="expedition-card itinerary-card">
+          <div class="expedition-card itinerary-card quick-links-card">
             <h4>${e.title}</h4>
-            ${e.url
-              ? `<a href="${e.url}" target="_blank" class="event-link">VIEW ITINERARY</a>`
-              : `<span class="tbc">TBC</span>`}
+            <div class="quick-link-row">
+              <div class="quick-link-row-label">ITINERARY</div>
+              ${itineraryHtml}
+            </div>
+            <div class="quick-link-row">
+              <div class="quick-link-row-label">YOUR APPLICATION</div>
+              ${editAppHtml}
+            </div>
           </div>`;
       }
       return `
