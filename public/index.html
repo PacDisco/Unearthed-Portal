@@ -2075,6 +2075,7 @@
     content.style.opacity = 0;
 
     setTimeout(async () => {
+      try {
 
       if (field === "trip_information_content") {
         // Inject a "new notice" banner above the expedition cards if there
@@ -2202,6 +2203,20 @@
       content.innerHTML = html;
       content.style.opacity = 1;
       styleLinksAsButtons();
+
+      } catch (err) {
+        // Any throw from the async section-rendering above lands here so
+        // it's visible in the console AND on the page, instead of leaving
+        // the user staring at "Loading..." forever.
+        console.error(`[loadSection] field "${field}" threw:`, err);
+        const safe = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        content.innerHTML = `<div style="padding:20px; color:#c0392b; font-size:13px;">
+          <strong>Could not render this section.</strong><br>
+          Section: <code>${safe(field)}</code><br>
+          Error: <code>${safe(err && (err.message || err))}</code>
+        </div>`;
+        content.style.opacity = 1;
+      }
     }, 100);
   }
 
