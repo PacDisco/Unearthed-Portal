@@ -1,356 +1,385 @@
-// Returns the contacts associated to a portal, split into:
-//   - teachers     — contacts with the "Teacher" association label, with
-//                    full contact details (name/email/phone).
-//   - tripLeaders  — contacts with the "Trip Leader" association label,
-//                    with name + trip_leader_bio (custom contact property).
-//
-// Both lists feed the "SCHOOL CONTACTS" section on the portal so parents
-// see who's accompanying the trip and a short bio of each trip leader.
-
 export async function handler(event) {
   try {
-    const { portalId } = event.queryStringParameters || {};
+    const params = event.queryStringParameters || {};
+    const email = params.email;
+    // Admin viewing path: caller passed ?portalId=… instead of ?email=…
+    // Skip the contact-lookup + association step entirely and just return
+    // that specific Portal record's content. Used by /admin.html when an
+    // admin picks a trip from the portal list.
+    const adminPortalId = params.portalId;
+    // Leader / multi-trip user picker: caller passes ?email=…&picked=<id>
+    // after choosing one of their associated trips on /my-trips.html.
+    // We verify the picked id is actually in the user's association list
+    // before honouring it, so a logged-in user can\'t guess another
+    // trip\'s portalId in the URL bar.
+    const pickedPortalId = params.picked;
 
-    if (!portalId) {
+    if (!email && !adminPortalId) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: "Missing portalId" })
+        body: JSON.stringify({ error: "Missing email or portalId" })
       };
     }
 
     const OBJECT = "2-58156993";
+    // The "global" Portal record holds shared default content (insurance,
+    // FAQs, payment form URL, document upload form, etc.). Any property
+    // that's empty on a trip's record falls back to whatever is set here.
+    const GLOBAL_PORTAL_ID = "50506535214";
     const headers = {
       Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
       "Content-Type": "application/json"
     };
 
-    // 1. Get every contact associated to this portal
-    const assocRes = await fetch(
-      `https://api.hubapi.com/crm/v4/objects/${OBJECT}/${portalId}/associations/contacts`,
-      { headers }
-    );
+    // Manual overrides for paired labels where HubSpot returns null
+    // Add new paired labels here as needed: typeId -> label name
+    const pairedLabelOverrides = {
+      28: "Trip Leader"
+    };
 
-    if (!assocRes.ok) {
+    // ----- Resolve portalId + tab-visibility labels -----
+    // Two paths:
+    //   (A) Regular user: look up the contact, find their portal association,
+    //       use the typeIds to figure out which tabs they should see.
+    //   (B) Admin viewing: caller already told us which portal to load, so
+    //       skip both lookups. Admins see every tab — return all labels.
+    let portalId, labels;
+    // Populated only on the email-auth path. Used after the if/else so
+    // the response can include availableTripCount for the "Switch trip"
+    // header link.
+    let associatedPortalIds = null;
+
+    if (adminPortalId) {
+      portalId = String(adminPortalId);
+      // Returning every plausible label so applyVisibility() in the
+      // frontend keeps every tab on for admin viewing.
+      labels = ["Parent", "Student", "Teacher", "Trip Leader"];
+    } else {
+      // Path A: contact-association lookup.
+      const contactRes = await fetch(
+        "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            filterGroups: [{
+              filters: [{
+                propertyName: "email",
+                operator: "EQ",
+                value: email
+              }]
+            }]
+          })
+        }
+      );
+
+      if (!contactRes.ok) {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({
+            error: "Contact fetch failed",
+            details: await contactRes.text()
+          })
+        };
+      }
+
+      const contactData = await contactRes.json();
+      const contactId = contactData.results?.[0]?.id;
+
+      console.log("CONTACT ID:", contactId);
+
+      if (!contactId) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ error: "Contact not found" })
+        };
+      }
+
+      // 2. Get associated portal
+      const assocRes = await fetch(
+        `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/${OBJECT}`,
+        { headers }
+      );
+
+      if (!assocRes.ok) {
+        return {
+          statusCode: 500,
+          body: JSON.stringify({
+            error: "Association fetch failed",
+            details: await assocRes.text()
+          })
+        };
+      }
+
+      const assocData = await assocRes.json();
+
+      console.log("RAW ASSOC RESULTS:", JSON.stringify(assocData.results, null, 2));
+
+      if (!assocData.results || assocData.results.length === 0) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ error: "No portal association found" })
+        };
+      }
+
+      // Build the list of all portals this contact is associated with.
+      // We need it in two places: to detect the "multi-trip" case below,
+      // and to verify a `?picked=` param really belongs to this user.
+      associatedPortalIds = assocData.results
+        .map(r => String(r.toObjectId))
+        .filter(Boolean);
+
+      if (associatedPortalIds.length > 1) {
+        // Multi-trip user (e.g. an expedition leader running 2 trips).
+        // If they\'ve picked one already, verify it belongs to them and
+        // use it. Otherwise return a "requirePicker" payload that the
+        // frontend uses to bounce them to /my-trips.html.
+        if (pickedPortalId && associatedPortalIds.includes(String(pickedPortalId))) {
+          portalId = String(pickedPortalId);
+        } else {
+          // Fetch lightweight metadata for each associated portal so the
+          // picker page can render trip cards without a second round-trip.
+          const portalCards = await fetchPortalCards(associatedPortalIds, OBJECT, headers);
+          return {
+            statusCode: 200,
+            body: JSON.stringify({
+              requirePicker: true,
+              portals: portalCards
+            })
+          };
+        }
+      } else {
+        portalId = associatedPortalIds[0];
+      }
+
+      console.log("PORTAL ID:", portalId);
+
+      // Get typeIds from this association
+      const typeIds = assocData.results
+        .flatMap(r => r.associationTypes || [])
+        .map(t => t.typeId);
+
+      // Fetch label definitions
+      const labelDefsRes = await fetch(
+        `https://api.hubapi.com/crm/v4/associations/contacts/${OBJECT}/labels`,
+        { headers }
+      );
+
+      const labelDefs = await labelDefsRes.json();
+
+      console.log("LABEL DEFS:", JSON.stringify(labelDefs, null, 2));
+
+      // Match typeIds to label definitions
+      // Use override map for paired labels where HubSpot returns null
+      labels = (labelDefs.results || [])
+        .filter(def => typeIds.includes(def.typeId))
+        .map(def => pairedLabelOverrides[def.typeId] || def.label)
+        .filter(l => l && l !== "Program");
+
+      console.log("LABELS EXTRACTED:", labels);
+    }
+
+    // 3. Get portal content from BOTH the trip's record AND the global
+    //    record in parallel, then merge with trip-priority. Any property
+    //    that's empty (or null/undefined) on the trip record gets filled
+    //    in from the global record's value. This way you can set defaults
+    //    once on the global record and override per-trip whenever needed,
+    //    for ANY property in the list below — no per-field special casing
+    //    required in the frontend.
+    //
+    // ============================================================
+    // === EDIT THIS LINE TO ADD A NEW PROPERTY ===
+    // To make a new HubSpot property visible to the portal, append its
+    // internal name to the comma-separated list below. See
+    // HOW_TO_ADD_FIELDS.md in the project root for a step-by-step guide.
+    // ============================================================
+    const PORTAL_PROPERTIES = [
+      // Core trip metadata
+      "portal_title", "destination", "price",
+      // Tab content (rich text)
+      "trip_information_content", "destination_overview_content",
+      "travel_information_content", "general_information_content",
+      "family_information_content", "payments_information_content",
+      "trip_leader_information_content", "teacher_information_content",
+      "faqs", "hs_object_id",
+      // Payment form URLs
+      "payments_form_url", "payment_form_url",
+      // Schedule / itinerary
+      "itinerary",
+      "initial_planning_meeting", "initial_planning_meeting_information",
+      "training_event", "training_event_information",
+      "final_briefing", "final_briefing_information",
+      "buildup_day", "buildup_day_information",
+      "reentry_workshop", "reentry_workshop_information",
+      // Flights
+      "flight_departure_date", "departure_airlines", "departure_routing",
+      "return_flight_date", "return_flight_airlines", "return_flight_routing",
+      // Payment schedule (1..10)
+      "payment_date_1", "payment_amount_1",
+      "payment_date_2", "payment_amount_2",
+      "payment_date_3", "payment_amount_3",
+      "payment_date_4", "payment_amount_4",
+      "payment_date_5", "payment_amount_5",
+      "payment_date_6", "payment_amount_6",
+      "payment_date_7", "payment_amount_7",
+      "payment_date_8", "payment_amount_8",
+      "payment_date_9", "payment_amount_9",
+      "payment_date_10", "payment_amount_10",
+      // Student/family resources (manuals tab)
+      "student_manual", "student_handbook", "gear_list",
+      "fundraising_guide", "fitness",
+      "generic_kit_info_flyer", "fundraising_team_tool", "fundraising_templates",
+      // Insurance + documents
+      "insurance_overview__faqs", "insurance_policy_wording",
+      "documents_upload_form",
+      // Message board
+      "message_board", "message_board_posted_at",
+      // ============================================================
+      // Trip Leader resource links (rendered as Details buttons at the
+      // top of the Trip Leader tab; see TRIP_LEADER_LINKS in index.html
+      // for the labels). Each one stores a single URL. Trip-level value
+      // wins; if blank, falls back to the global record's value.
+      // ============================================================
+      "leader_manual",
+      "leader_handbook",
+      "generic_risk_assessment",
+      "country_risk_assessment",
+      "expedition_budget",
+      "country_contact_list",
+      "medical_manual",
+      "inreach_manual",
+      "satellite_phone_manual",
+      "incident_report_link",
+      "accommodation_audit_link",
+      "activity_audit_link",
+      "transport_audit_link",
+      "wise_card_troubleshooting",
+      "emergency_numbers__escalation",
+      "expense__reimbursement_policies",
+      "device_policies",
+      "child_protection_policy"
+    ].join(",");
+
+    const tripPortalUrl   = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=${PORTAL_PROPERTIES}`;
+    const globalPortalUrl = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${GLOBAL_PORTAL_ID}?properties=${PORTAL_PROPERTIES}`;
+
+    const [portalRes, globalRes] = await Promise.all([
+      fetch(tripPortalUrl, { headers }),
+      fetch(globalPortalUrl, { headers }).catch(() => null)
+    ]);
+
+    if (!portalRes.ok) {
       return {
         statusCode: 500,
         body: JSON.stringify({
-          error: "Portal contact associations fetch failed",
-          details: await assocRes.text()
+          error: "Portal fetch failed",
+          details: await portalRes.text()
         })
       };
     }
 
-    const assocData = await assocRes.json();
-    const results = assocData.results || [];
+    const portal = await portalRes.json();
+    let globalProps = {};
+    if (globalRes && globalRes.ok) {
+      try {
+        const globalData = await globalRes.json();
+        globalProps = globalData.properties || {};
+      } catch (e) {
+        // Non-fatal — we just won't have global fallback values this request.
+        console.warn("Global portal parse warning:", e.message);
+      }
+    } else if (globalRes) {
+      console.warn("Global portal fetch non-OK:", globalRes.status);
+    }
 
-    // 2. Bucket by association label
-    const teacherIds = results
-      .filter(r => r.associationTypes?.some(t => t.label === "Teacher"))
-      .map(r => r.toObjectId);
+    const tripProps = portal.properties || {};
+    const merged = mergeWithGlobalFallback(tripProps, globalProps);
 
-    const tripLeaderIds = results
-      .filter(r => r.associationTypes?.some(t => t.label === "Trip Leader"))
-      .map(r => r.toObjectId);
+    console.log("PORTAL DATA (merged):", JSON.stringify(merged, null, 2));
 
-    // 3. Fetch contact records for each bucket in parallel.
-    //    Both buckets pull `expedition_leader_photo` (the staff headshot stored
-    //    as a HubSpot *File* property — meaning the property value is a
-    //    numeric File ID, not a URL). Trip leaders also pull trip_leader_bio
-    //    for the blurb under their photo on the first tab.
-    const [teachersRaw, tripLeadersRaw] = await Promise.all([
-      fetchContactRecords(
-        teacherIds,
-        headers,
-        ["firstname", "lastname", "email", "phone", "expedition_leader_photo"]
-      ),
-      fetchContactRecords(
-        tripLeaderIds,
-        headers,
-        ["firstname", "lastname", "trip_leader_bio", "expedition_leader_photo"]
-      )
-    ]);
-
-    // 3b. Admins (School Support Manager, Expedition Planning Manager) are looked up
-    //     globally — they're not associated to any specific portal. Showing
-    //     them on every trip's Expedition Overview is the whole point of
-    //     the admin role. We search by the admin_role contact property and
-    //     fold the results in alongside teachers + trip leaders.
-    const adminsRaw = await fetchAdminContacts(headers);
-
-    // 3c. Collect every numeric File ID we just got from any contact's
-    //     expedition_leader_photo (across all three buckets), and resolve
-    //     them all in parallel against HubSpot's Files API. The result is
-    //     a Map<fileId, url> we can use during shaping. Non-numeric values
-    //     (someone pasted a URL into a File property by mistake, etc.)
-    //     are passed through downstream.
-    const fileUrlMap = await resolveFileIds(
-      collectFileIds(
-        [...teachersRaw, ...tripLeadersRaw, ...adminsRaw],
-        "expedition_leader_photo"
-      ),
-      headers
-    );
-
-    const teachers    = teachersRaw.map(c    => shapeTeacher(c, fileUrlMap));
-    const tripLeaders = tripLeadersRaw.map(l => shapeTripLeader(l, fileUrlMap));
-    const admins      = adminsRaw.map(a      => shapeAdmin(a, fileUrlMap));
-
-    // Sort each list alphabetically by name
-    teachers.sort((a, b) => a.name.localeCompare(b.name));
-    tripLeaders.sort((a, b) => a.name.localeCompare(b.name));
-    admins.sort((a, b) => a.name.localeCompare(b.name));
-
+    // 4. Return data. `availableTripCount` lets the frontend decide
+    //    whether to show a "Switch trip" link in the header (only
+    //    relevant for users associated with more than one portal).
+    //    Admins viewing via portalId get null here (their picker is
+    //    /admin.html).
+    const availableTripCount = adminPortalId
+      ? null
+      : (associatedPortalIds ? associatedPortalIds.length : 1);
     return {
       statusCode: 200,
-      body: JSON.stringify({ teachers, tripLeaders, admins })
+      body: JSON.stringify({
+        ...merged,
+        labels,
+        availableTripCount
+      })
     };
 
   } catch (err) {
     console.error("ERROR:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({
+        error: "Server error",
+        details: err.message
+      })
     };
   }
 }
 
-// ---------- helpers ----------
-
-// Reads a batch of contacts and returns the raw HubSpot result objects
-// (i.e. each item's `properties` is the keyed map of property values).
-// Used in place of the old fetchContacts/shape combo so we can take an
-// extra pass to resolve File IDs across the *combined* set of contacts.
-async function fetchContactRecords(ids, headers, properties) {
-  if (!ids || ids.length === 0) return [];
-
-  const res = await fetch(
-    "https://api.hubapi.com/crm/v3/objects/contacts/batch/read",
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        inputs: ids.map(id => ({ id: String(id) })),
-        properties
-      })
-    }
-  );
-
-  if (!res.ok) return [];
-
-  const data = await res.json();
-  return data.results || [];
-}
-
-function shapeTeacher(c, fileUrlMap) {
-  return {
-    name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
-    email:    c.properties.email || "",
-    phone:    c.properties.phone || "",
-    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
-  };
-}
-
-function shapeTripLeader(c, fileUrlMap) {
-  return {
-    name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
-    bio:      c.properties.trip_leader_bio || "",
-    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
-  };
-}
-
-// Looks up every contact whose admin_role is set to one of the recognised
-// admin roles. These don't need to be associated to the trip — having a
-// non-empty admin_role IS the access mechanism. Returns the raw HubSpot
-// contact records (same shape as fetchContactRecords) so they can be
-// folded into the same File-ID resolution pass as the other buckets.
-async function fetchAdminContacts(headers) {
-  const ROLES = ["School Support Manager", "Expedition Planning Manager"];
-
-  const res = await fetch(
-    "https://api.hubapi.com/crm/v3/objects/contacts/search",
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        // OR group: admin_role equals any one of the recognised roles.
-        filterGroups: ROLES.map(role => ({
-          filters: [{
-            propertyName: "admin_role",
-            operator: "EQ",
-            value: role
-          }]
-        })),
-        properties: [
-          "firstname", "lastname", "email", "phone",
-          "admin_role", "expedition_leader_photo",
-          // Reuse the same bio field as trip leaders so admins can have a
-          // bio shown under their card on the Overview without us inventing
-          // a new property.
-          "trip_leader_bio"
-        ],
-        limit: 100
-      })
-    }
-  );
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.warn(`[get-teachers] admin search failed ${res.status}: ${text.slice(0, 200)}`);
-    return [];
-  }
-
-  const data = await res.json();
-  return data.results || [];
-}
-
-function shapeAdmin(c, fileUrlMap) {
-  return {
-    name:     `${c.properties.firstname || ""} ${c.properties.lastname || ""}`.trim(),
-    email:    c.properties.email || "",
-    phone:    c.properties.phone || "",
-    bio:      c.properties.trip_leader_bio || "",
-    role:     c.properties.admin_role || "",
-    photoUrl: resolvePhotoUrl(c.properties.expedition_leader_photo, fileUrlMap)
-  };
-}
-
-// Walks every contact record and pulls out any value of `propName` that
-// looks like a HubSpot File ID (digits only). Used to build a deduped
-// list before the Files API resolution pass — multiple staff sharing the
-// same photo end up as one fetch.
-function collectFileIds(contactRecords, propName) {
-  const ids = new Set();
-  for (const c of contactRecords || []) {
-    const raw = c?.properties?.[propName];
-    if (!raw) continue;
-    // HubSpot File props sometimes return "12345" and sometimes "12345,67890"
-    // when multi-file; treat any digit-only token as a File ID candidate.
-    String(raw)
-      .split(/[\s,;]+/)
-      .map(s => s.trim())
-      .filter(s => /^\d+$/.test(s))
-      .forEach(s => ids.add(s));
-  }
-  return ids;
-}
-
-// Resolves each File ID against HubSpot's Files API and returns a
-// Map<fileId, fileUrl>.
-//
-// We use the *signed-url* sub-endpoint, NOT the metadata endpoint:
-//   GET /files/v3/files/{id}/signed-url  →  { url: "<direct CDN URL>" }
-// vs.
-//   GET /files/v3/files/{id}            →  { url: "<api-na1.hubspot.com/.../signed-url-redirect>" }
-//
-// The metadata endpoint hands back a HubSpot API URL that 302-redirects
-// to the actual file. Desktop browsers follow that redirect happily,
-// but iOS Safari (especially in PWA mode with a service worker
-// involved) refuses to render a redirected response in <img>. The
-// dedicated signed-url endpoint returns the direct CDN URL the browser
-// can use straight away — no redirect, no auth, no SW gymnastics.
-async function resolveFileIds(idSet, headers) {
-  const map = new Map();
-  if (!idSet || idSet.size === 0) return map;
-
-  await Promise.all(
-    [...idSet].map(async (id) => {
-      try {
-        const res = await fetch(
-          `https://api.hubapi.com/files/v3/files/${encodeURIComponent(id)}/signed-url`,
-          { headers }
-        );
-        if (!res.ok) {
-          // Fall back to the metadata endpoint — useful if signed-url
-          // is gated by scope or the file is configured as fully
-          // public (in which case metadata.url already IS the CDN URL).
-          const metaRes = await fetch(
-            `https://api.hubapi.com/files/v3/files/${encodeURIComponent(id)}`,
-            { headers }
-          );
-          if (!metaRes.ok) {
-            console.warn(`[get-teachers] Files API ${res.status}/${metaRes.status} for fileId ${id}`);
-            return;
-          }
-          const meta = await metaRes.json();
-          if (meta && typeof meta.url === "string" && meta.url) {
-            map.set(id, meta.url);
-          }
-          return;
-        }
-        const data = await res.json();
-        if (data && typeof data.url === "string" && data.url) {
-          map.set(id, data.url);
-        }
-      } catch (err) {
-        console.warn(`[get-teachers] Files API fetch failed for fileId ${id}:`, err?.message || err);
+// Batch-reads minimal metadata for the multi-portal trip picker: enough
+// for the user-facing card (title, destination, optional price). Used
+// when an `email`-authenticated user has 2+ associated portals and we
+// need to surface them on /my-trips.html.
+async function fetchPortalCards(portalIds, OBJECT, headers) {
+  if (!portalIds || portalIds.length === 0) return [];
+  try {
+    const res = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/${OBJECT}/batch/read`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          inputs: portalIds.map(id => ({ id: String(id) })),
+          properties: ["portal_title", "destination", "price"]
+        })
       }
-    })
-  );
-
-  return map;
+    );
+    if (!res.ok) {
+      console.warn("[portal] picker batch read non-OK:", res.status);
+      return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null }));
+    }
+    const data = await res.json();
+    return (data.results || []).map(r => ({
+      id: String(r.id),
+      title: r.properties?.portal_title || "(untitled trip)",
+      destination: r.properties?.destination || "",
+      price: r.properties?.price || null
+    })).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  } catch (err) {
+    console.warn("[portal] picker batch read threw:", err?.message || err);
+    return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null }));
+  }
 }
 
-// Returns a browser-loadable URL for a leader's headshot, or null if there
-// isn't one. The HubSpot File property stores a numeric File ID — we look
-// that up in the resolved fileUrlMap from /files/v3/files/{id}. Older
-// records may instead contain a raw URL (someone pasted one into the
-// property, or a previous version stored it as a string), so we still
-// handle that case as a fallback.
-//
-// For a Jotform-hosted URL we route through /document-proxy so the API key
-// is added server-side; everything else (HubSpot CDN, public images) goes
-// through as-is.
-function resolvePhotoUrl(raw, fileUrlMap) {
-  if (!raw) return null;
-  const first = String(raw)
-    .split(/[\s,;]+/)
-    .map(s => s.trim())
-    .find(Boolean);
-  if (!first) return null;
-
-  // Case 1: HubSpot File ID. Look up the resolved URL.
-  if (/^\d+$/.test(first) && fileUrlMap && fileUrlMap.has(first)) {
-    return wrapIfJotform(fileUrlMap.get(first));
+// Merge a trip record's properties on top of the global record's. For each
+// key, the trip's value wins if it's "non-empty" (not null/undefined and not
+// an empty/whitespace-only string); otherwise the global record's value is
+// used. Returns a flat object suitable for ...spread into the response.
+function mergeWithGlobalFallback(tripProps, globalProps) {
+  const out = {};
+  const allKeys = new Set([
+    ...Object.keys(tripProps || {}),
+    ...Object.keys(globalProps || {})
+  ]);
+  for (const k of allKeys) {
+    const t = tripProps ? tripProps[k] : undefined;
+    if (t !== null && t !== undefined && String(t).trim() !== "") {
+      out[k] = t;
+    } else if (globalProps && globalProps[k] !== undefined) {
+      out[k] = globalProps[k];
+    } else {
+      out[k] = null;
+    }
   }
-
-  // Case 2: An actual URL was stored on the property.
-  let parsed;
-  try {
-    parsed = new URL(first);
-  } catch (_) {
-    return null;
-  }
-  return wrapIfJotform(parsed.toString());
-}
-
-// Decides how to expose the photo URL to the browser. We route Jotform
-// URLs through the same-origin /document-proxy edge function (because
-// they need the API key appended server-side and would otherwise force
-// the parent to log into Jotform). HubSpot CDN URLs and any other
-// public URL pass through directly — HubSpot signed URLs are sensitive
-// to path/query reserialisation and don't survive a proxy round-trip.
-function wrapIfJotform(url) {
-  if (!url) return null;
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch (_) {
-    return null;
-  }
-  // Force HTTPS. Mobile browsers (especially iOS Safari in PWA mode)
-  // block mixed-content image loads on HTTPS pages, while desktop
-  // sometimes silently upgrades. Normalising here prevents one
-  // mobile-only failure mode where photos render fine on desktop.
-  if (parsed.protocol === "http:") {
-    parsed.protocol = "https:";
-  }
-  const finalUrl = parsed.toString();
-  const host = parsed.hostname.toLowerCase();
-  const isJotform = (
-    host === "jotform.com" || host.endsWith(".jotform.com") ||
-    host === "jotfor.ms"   || host.endsWith(".jotfor.ms")
-  );
-  return isJotform
-    ? `/document-proxy?url=${encodeURIComponent(finalUrl)}`
-    : finalUrl;
+  return out;
 }
