@@ -7,7 +7,7 @@
 //   2. Look up the invitee's contact by email; create one if it doesn't
 //      exist (with optional first/last name from the form).
 //   3. Set their admin_role property to the requested role
-//      (Program Administrator | Operations Manager).
+//      (School Support Manager | Expedition Planning Manager).
 //   4. Generate a one-time portal_token + portal_token_expiry, save to
 //      the contact, and email them a link to /set-password.html so they
 //      can set their password and log in.
@@ -31,8 +31,8 @@ import nodemailer from "nodemailer";
 // Either way, ANY non-empty admin_role grants login + trip-picker access
 // to the holder — see the inviter check below.
 const ALLOWED_ASSIGNABLE_ROLES = new Set([
-  "Program Administrator",
-  "Operations Manager"
+  "School Support Manager",
+  "Expedition Planning Manager"
 ]);
 
 let cachedTransporter = null;
@@ -90,7 +90,7 @@ export async function handler(event) {
     // 1. Verify the caller is an admin in HubSpot. ANY non-empty
     //    admin_role grants invite permission — not just the two roles
     //    the form lets you assign — so e.g. a "Founder" or "Director"
-    //    can also invite Program Administrators / Operations Managers.
+    //    can also invite School Support Managers / Expedition Planning Managers.
     const inviter = await findContactByEmail(inviterEmail, headers);
     const inviterRole = (inviter?.properties?.admin_role || "").trim();
     if (!inviter || !inviterRole) {
