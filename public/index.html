@@ -1322,6 +1322,18 @@
   const email = sessionStorage.getItem("portalEmail");
   if (!email) window.location.href = "/login.html";
 
+  // ----- Admin viewing mode -----
+  // Admins land on /admin.html after login, then click a trip to view. We
+  // get back here with two query params: portalId (the Portal record they
+  // chose) and as_admin=1 (a flag that turns the portal into admin mode).
+  const _viewParams = new URLSearchParams(window.location.search);
+  const adminPortalId = _viewParams.get("portalId");
+  const isAdminView   = _viewParams.get("as_admin") === "1" && !!adminPortalId;
+  const adminRole     = sessionStorage.getItem("adminRole");
+  // Drop the flag if the user isn't actually logged in as an admin —
+  // can't bypass the role check by hand-editing the URL.
+  const adminViewing  = isAdminView && !!adminRole;
+
   let portalData = {};
 
   const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-sand"];
