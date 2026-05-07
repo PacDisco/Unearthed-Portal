@@ -165,6 +165,47 @@
       padding: 30px 10px;
       letter-spacing: 0.5px;
     }
+    /* "Enable notifications" pill above the message board content. */
+    .push-prompt {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      background: #ecf6f7;
+      border: 1px solid #c9e1e3;
+      border-left: 4px solid #59a1aa;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #2d6b74;
+    }
+    .push-prompt-text { flex: 1 1 220px; }
+    .push-prompt-btn {
+      padding: 9px 16px;
+      background: #2d6b74;
+      color: white;
+      border: none;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+    .push-prompt-btn:hover { opacity: 0.88; }
+    .push-prompt-btn:disabled { opacity: 0.55; cursor: wait; }
+    .push-prompt--ok {
+      background: #e8f4ee;
+      border-color: #c4e0cf;
+      border-left-color: #5b8a73;
+      color: #2d6b3f;
+    }
+    .push-prompt--denied {
+      background: #fdf4ec;
+      border-color: #f3d8b4;
+      border-left-color: #d6a380;
+      color: #8a5a2a;
+    }
 
     #content {
       max-width: 900px;
@@ -276,6 +317,70 @@
       border: 1px solid #e2decf;
       flex: 0 0 auto;
       padding: 14px 20px;
+    }
+
+    /* Desktop QR card — sits in the bottom-right corner so a parent on
+       a desktop browser can scan it with their phone to open the portal
+       there and add it to home screen. Hidden on narrow viewports
+       since mobile users have the install sheet instead. */
+    #qrCard {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: 180px;
+      background: white;
+      border: 1px solid #e2decf;
+      border-top: 3px solid #59a1aa;
+      padding: 14px 14px 12px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      z-index: 999;
+      font-family: 'Inter', sans-serif;
+    }
+    #qrCard .qr-title {
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 8px;
+    }
+    #qrCard .qr-code {
+      width: 152px;
+      height: 152px;
+      display: block;
+      margin: 0 auto 8px;
+    }
+    /* The qrcode-generator lib emits a <table> (or img). Keep both clean. */
+    #qrCard .qr-code table {
+      border-collapse: collapse;
+      margin: 0 auto;
+    }
+    #qrCard .qr-code table td {
+      width: 4px; height: 4px; padding: 0; border: 0;
+    }
+    #qrCard .qr-caption {
+      font-size: 11px;
+      color: #444;
+      line-height: 1.4;
+      text-align: center;
+    }
+    #qrCard .qr-close {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      width: 22px;
+      height: 22px;
+      background: transparent;
+      border: none;
+      color: #999;
+      font-size: 16px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    #qrCard .qr-close:hover { color: #2d6b74; }
+
+    /* Hide the QR on touch / narrow devices — install sheet covers them. */
+    @media (max-width: 900px), (pointer: coarse) {
+      #qrCard { display: none !important; }
     }
 
     /* STUDENT CARDS */
@@ -1487,6 +1592,13 @@
 
 <div id="content">Loading...</div>
 
+<div id="qrCard" hidden>
+  <button class="qr-close" type="button" onclick="dismissQrCard()" aria-label="Close">&times;</button>
+  <div class="qr-title">USE ON YOUR PHONE</div>
+  <div class="qr-code" id="qrCardImage"></div>
+  <div class="qr-caption">Scan with your phone's camera to open the portal there.</div>
+</div>
+
 <div id="installSheet">
   <h3>ADD TO HOME SCREEN</h3>
   <p id="installSheetText"></p>
@@ -1710,6 +1822,98 @@
     catch (e) { lastSeen = null; }
     const lastSeenTime = parseFlexibleTime(lastSeen) || 0;
     return updatedTime > lastSeenTime;
+  }
+
+  // ---- Web Push subscription ----
+  // Renders an "ENABLE NOTIFICATIONS" pill at the top of the Message
+  // Board tab IF the browser supports push and the user hasn't already
+  // subscribed in this session. Click → ask permission → subscribe →
+  // POST the subscription to /save-push-subscription.
+  function renderEnablePushButton() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      return ""; // Browser doesn't support push (Safari < 16.4 etc.)
+    }
+    if (Notification.permission === "denied") {
+      return `<div class="push-prompt push-prompt--denied">
+        Notifications are blocked for this site. Re-enable them in your browser's site settings to get message-board updates.
+      </div>`;
+    }
+    // Don't show again once the user has saved a subscription.
+    if (sessionStorage.getItem("pushSubscribed") === "1") return "";
+    return `<div class="push-prompt">
+      <div class="push-prompt-text">Get notified when there's a new message on this trip's board.</div>
+      <button type="button" class="push-prompt-btn" onclick="enablePushNotifications(this);">ENABLE NOTIFICATIONS</button>
+    </div>`;
+  }
+
+  // Click handler. Fetches the public VAPID key, asks the browser for
+  // notification permission, subscribes via the service worker, and
+  // POSTs the subscription to the backend so future server-side
+  // sends can target it.
+  async function enablePushNotifications(btn) {
+    const original = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "ENABLING…"; }
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        alert("Your browser doesn't support push notifications.");
+        return;
+      }
+      // 1. Permission.
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        alert("Notifications were not enabled. You can change this any time in your browser's site settings.");
+        return;
+      }
+      // 2. Public VAPID key from the server.
+      const cfgRes = await fetch("/.netlify/functions/get-push-config");
+      const cfg = await cfgRes.json();
+      if (!cfgRes.ok || !cfg.publicKey) {
+        alert("Push isn't configured on the server yet. Please tell info@unearthededucation.org.");
+        return;
+      }
+      // 3. Subscribe via the service worker.
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(cfg.publicKey)
+        });
+      }
+      // 4. Save the subscription to the user's contact in HubSpot.
+      const saveRes = await fetch("/.netlify/functions/save-push-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, subscription: sub.toJSON ? sub.toJSON() : sub })
+      });
+      if (!saveRes.ok) {
+        const data = await saveRes.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${saveRes.status}`);
+      }
+      sessionStorage.setItem("pushSubscribed", "1");
+      // Replace the prompt with a confirmation pill (in-place).
+      const prompt = btn && btn.closest(".push-prompt");
+      if (prompt) {
+        prompt.outerHTML = `<div class="push-prompt push-prompt--ok">
+          You're all set — you'll get a notification when this trip's message board is updated.
+        </div>`;
+      }
+    } catch (err) {
+      console.error("enablePushNotifications failed:", err);
+      alert("Could not enable notifications: " + (err.message || String(err)));
+      if (btn) { btn.disabled = false; btn.textContent = original; }
+    }
+  }
+
+  // Decode the base64-url VAPID public key into the Uint8Array the
+  // PushManager.subscribe API requires.
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
+    return out;
   }
 
   function applyMessageBoardBadge() {
@@ -1971,6 +2175,7 @@
       safeRun("applyMessageBoardBadge", () => applyMessageBoardBadge());
       safeRun("loadSection",            () => loadSection("trip_information_content"));
       safeRun("showInstallPrompt",      () => showInstallPrompt());
+      safeRun("showDesktopQr",          () => showDesktopQr());
 
     } catch (err) {
       console.error("[init] threw:", err);
@@ -2421,9 +2626,10 @@
             metaHtml = `<div class="message-board-meta">LAST UPDATED ${attrEsc(when.toUpperCase())}</div>`;
           }
         }
-        content.innerHTML = board
+        const enableHtml = renderEnablePushButton();
+        content.innerHTML = enableHtml + (board
           ? `${metaHtml}<div class="message-board-content">${board}</div>`
-          : `<div class="message-board-empty">No messages have been posted yet.</div>`;
+          : `<div class="message-board-empty">No messages have been posted yet.</div>`);
         content.style.opacity = 1;
         styleLinksAsButtons();
         markMessageBoardSeen();
@@ -2855,18 +3061,30 @@
       ? "leader-card-photo"
       : "leader-card-photo leader-card-photo--fallback";
 
+    // Diagnostic: surface every photo URL to the console so a screenshot
+    // of mobile DevTools (or remote-inspect from desktop Safari) tells
+    // us exactly which URL the browser tried to load.
+    if (hasPhoto) console.log("[leader-card] photoUrl:", photoUrl);
+
     // Inline-quoted JS so we can attach the same handler in both cases
     // without templating around the differences. `data-fb` flips to "1"
     // once we've already swapped to the fallback; the second time the
     // handler fires we just hide the image instead of looping.
+    // Also logs the failure so mobile-only failures show up in DevTools.
     const onErrorJs =
+      "console.warn('[leader-card] photo failed:', this.src);" +
       "if(this.dataset.fb!=='1'){this.dataset.fb='1';this.src='" + fallback + "';this.classList.add('leader-card-photo--fallback');}" +
       "else{this.onerror=null;this.style.display='none';}";
 
+    // Note: we deliberately DON'T set loading="lazy" here. iOS Safari
+    // (especially in installed-PWA mode) has had intermittent issues
+    // with lazy-loading cross-origin images that live below the fold —
+    // the load event sometimes never fires. Eager-loading these tiny
+    // 96×96 avatars costs almost nothing.
     const photoHtml = `<img class="${initialClass}"`
       + ` src="${initialSrc}"`
       + ` alt="${attrEsc(name || roleLabel)}"`
-      + ` loading="lazy"`
+      + ` decoding="async"`
       + ` data-fb="${hasPhoto ? '0' : '1'}"`
       + ` onerror="${onErrorJs}">`;
 
@@ -3010,7 +3228,7 @@
         }
 
         const photoHtml = student.portraitUrl
-          ? `<img class="student-card-photo" src="${attrEsc(student.portraitUrl)}" alt="${attrEsc(student.name || "Student")}" loading="lazy" onerror="this.style.display='none';">`
+          ? `<img class="student-card-photo" src="${attrEsc(student.portraitUrl)}" alt="${attrEsc(student.name || "Student")}" decoding="async" onerror="console.warn('[student-card] photo failed:', this.src); this.style.display='none';">`
           : "";
 
         // Trip-leader cards focus on medical context — hide the student's
@@ -3422,6 +3640,58 @@
       <a href="/admin.html" style="margin-left:auto; color:white; text-decoration:underline; font-weight:600;">← BACK TO ADMIN HOME</a>
     `;
     document.body.insertBefore(div, document.body.firstChild);
+  }
+
+  // Loads the qrcode-generator library on demand from jsDelivr (small,
+  // ~10KB minified, no third-party tracking). Resolves once the global
+  // `qrcode` is available. Cached after first call.
+  function ensureQrLibLoaded() {
+    if (window.__qrLibPromise) return window.__qrLibPromise;
+    window.__qrLibPromise = new Promise((resolve, reject) => {
+      if (typeof window.qrcode === "function") return resolve();
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("qrcode-generator failed to load"));
+      document.head.appendChild(s);
+    });
+    return window.__qrLibPromise;
+  }
+
+  // Renders the desktop-only QR card. Hidden by CSS on mobile / coarse-
+  // pointer devices, and dismissible (a session-storage flag persists
+  // the dismissal so we don't pop it again on every nav).
+  async function showDesktopQr() {
+    if (sessionStorage.getItem("qrDismissed") === "1") return;
+    // Skip on narrow / touch viewports too — defensive even though the
+    // CSS already handles it.
+    if (window.matchMedia("(max-width: 900px)").matches) return;
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+
+    const card = document.getElementById("qrCard");
+    if (!card) return;
+    try {
+      await ensureQrLibLoaded();
+      const target = document.getElementById("qrCardImage");
+      if (!target) return;
+      // Encode the current URL so scanning lands the user on the same
+      // logged-out portal page on their phone (login flow remains the
+      // same — sessionStorage doesn't carry across devices).
+      const qr = window.qrcode(0, "M");
+      qr.addData(window.location.href);
+      qr.make();
+      target.innerHTML = qr.createImgTag(4, 4);
+      card.hidden = false;
+    } catch (err) {
+      console.warn("[qr] could not render:", err);
+    }
+  }
+
+  function dismissQrCard() {
+    const card = document.getElementById("qrCard");
+    if (card) card.hidden = true;
+    try { sessionStorage.setItem("qrDismissed", "1"); } catch (_) {}
   }
 
   function showInstallPrompt() {
