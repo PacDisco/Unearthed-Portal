@@ -190,6 +190,7 @@ export async function handler(event) {
       // Student/family resources (manuals tab)
       "student_manual", "student_handbook", "gear_list",
       "fundraising_guide", "fitness",
+      "generic_kit_info_flyer", "fundraising_team_tool", "fundraising_templates",
       // Insurance + documents
       "insurance_overview__faqs", "insurance_policy_wording",
       "documents_upload_form",
