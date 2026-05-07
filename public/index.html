@@ -967,23 +967,24 @@
        but use radically different fills + icons so they don't read as
        a "pick the same thing twice" pair. Both are solid filled chips
        with a method label + icon on top and a bigger money figure
-       below. */
+       below. Sized small (~70% of original) to sit comfortably in the
+       payment-row without dominating it. */
     .payment-row .payment-amount-options {
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 8px;
-      min-width: 200px;
+      gap: 6px;
+      min-width: 140px;
     }
     .payment-row .payment-amount .payment-amount-link.payment-amount-link--card,
     .payment-row .payment-amount .payment-amount-link.payment-amount-link--debit {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 4px;
-      padding: 9px 14px;
-      border-radius: 6px;
-      border: 2px solid transparent;
+      gap: 2px;
+      padding: 6px 10px;
+      border-radius: 5px;
+      border: 1.5px solid transparent;
       line-height: 1.15;
       text-decoration: none !important;
       box-shadow: 0 1px 2px rgba(0,0,0,0.06);
@@ -1023,9 +1024,9 @@
     .payment-row .payment-amount-headline {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      font-size: 10px;
-      letter-spacing: 1.4px;
+      gap: 4px;
+      font-size: 8px;
+      letter-spacing: 1.1px;
       font-weight: 700;
     }
     .payment-row .payment-amount-icon {
@@ -1038,7 +1039,7 @@
       letter-spacing: inherit;
     }
     .payment-row .payment-amount-money {
-      font-size: 18px;
+      font-size: 13px;
       font-weight: 700;
       letter-spacing: 0.3px;
     }
@@ -1046,18 +1047,24 @@
        headline. Sized so it doesn't compete with the method label. */
     .payment-row .payment-amount-badge {
       display: inline-block;
-      margin-left: 6px;
-      padding: 1px 6px;
+      margin-left: 4px;
+      padding: 1px 4px;
       background: rgba(45, 107, 116, 0.12);
       color: #2d6b74;
-      font-size: 8px;
+      font-size: 7px;
       font-weight: 700;
-      letter-spacing: 1px;
+      letter-spacing: 0.8px;
       border-radius: 999px;
       text-transform: uppercase;
       vertical-align: middle;
       line-height: 1.5;
       white-space: nowrap;
+    }
+    /* "NO FEE" variant — green-tinted to read as a positive call-out
+       distinct from the teal "NZ ONLY" geographic-restriction badge. */
+    .payment-row .payment-amount-badge--good {
+      background: rgba(91, 138, 115, 0.15);
+      color: #3f6b5a;
     }
     /* On narrow screens, drop the min-width so the chips collapse to
        full-width and stay readable. */
@@ -2171,8 +2178,8 @@
         // Inline SVG icons keep the markup self-contained — no extra
         // assets to hot-link. Both use currentColor so they inherit
         // whatever text color the button is set to.
-        const cardIcon = `<svg class="payment-amount-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="2" y1="10" x2="22" y2="10" stroke="currentColor" stroke-width="2"/><line x1="6" y1="15" x2="10" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
-        const bankIcon = `<svg class="payment-amount-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><polygon points="12,3 22,8 2,8" fill="currentColor"/><rect x="4" y="10" width="2.5" height="8" fill="currentColor"/><rect x="9" y="10" width="2.5" height="8" fill="currentColor"/><rect x="14" y="10" width="2.5" height="8" fill="currentColor"/><rect x="2" y="19" width="20" height="2.2" fill="currentColor"/></svg>`;
+        const cardIcon = `<svg class="payment-amount-icon" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="2" y1="10" x2="22" y2="10" stroke="currentColor" stroke-width="2"/><line x1="6" y1="15" x2="10" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+        const bankIcon = `<svg class="payment-amount-icon" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><polygon points="12,3 22,8 2,8" fill="currentColor"/><rect x="4" y="10" width="2.5" height="8" fill="currentColor"/><rect x="9" y="10" width="2.5" height="8" fill="currentColor"/><rect x="14" y="10" width="2.5" height="8" fill="currentColor"/><rect x="2" y="19" width="20" height="2.2" fill="currentColor"/></svg>`;
 
         const cardLink = `<a href="${fallbackLink || "#"}"
               target="_blank" rel="noopener"
@@ -2194,7 +2201,7 @@
               data-charge-amount="${baseNum}"
               data-description="${attrEsc(description)}"
               data-payment-type="direct_debit"
-              onclick="return startCheckout(event, this);"><span class="payment-amount-headline">${bankIcon}<span class="payment-amount-method">BANK TRANSFER</span><span class="payment-amount-badge">NZ ONLY</span></span><span class="payment-amount-money">${debitChargeText}</span></a>`;
+              onclick="return startCheckout(event, this);"><span class="payment-amount-headline">${bankIcon}<span class="payment-amount-method">BANK TRANSFER</span><span class="payment-amount-badge">NZ ONLY</span><span class="payment-amount-badge payment-amount-badge--good">NO FEE</span></span><span class="payment-amount-money">${debitChargeText}</span></a>`;
 
         amountCell = `<div class="payment-amount-options">${cardLink}${debitLink}</div>` +
                      `<span class="payment-amount-note">Base ${baseText} · card +3% fee</span>`;
