@@ -1834,16 +1834,45 @@
       return ""; // Browser doesn't support push (Safari < 16.4 etc.)
     }
     if (Notification.permission === "denied") {
-      return `<div class="push-prompt push-prompt--denied">
+      return `<div class="push-prompt push-prompt--denied" data-push-prompt>
         Notifications are blocked for this site. Re-enable them in your browser's site settings to get message-board updates.
       </div>`;
     }
-    // Don't show again once the user has saved a subscription.
-    if (sessionStorage.getItem("pushSubscribed") === "1") return "";
-    return `<div class="push-prompt">
+    // Read the persisted "already subscribed" flag from localStorage so
+    // it survives PWA / tab close + reopen. After rendering we also do a
+    // live check against pushManager.getSubscription() — see
+    // confirmPushSubscriptionState() below — which hides the banner if
+    // an actual SW subscription is found, even if the flag is missing.
+    if (localStorage.getItem("pushSubscribed") === "1") return "";
+    return `<div class="push-prompt" data-push-prompt>
       <div class="push-prompt-text">Get notified when there's a new message on this trip's board.</div>
       <button type="button" class="push-prompt-btn" onclick="enablePushNotifications(this);">ENABLE NOTIFICATIONS</button>
     </div>`;
+  }
+
+  // Async post-render check — runs every time the Message Board tab
+  // renders. If the browser already has a push subscription, hide the
+  // banner regardless of what the localStorage flag says (covers the
+  // case where the flag got cleared but the subscription is still live).
+  // Also re-syncs the flag so future renders short-circuit cleanly.
+  async function confirmPushSubscriptionState() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        localStorage.setItem("pushSubscribed", "1");
+        document.querySelectorAll(".push-prompt[data-push-prompt]").forEach(el => {
+          // Only hide the prompt-style banner, not the --denied or --ok variants.
+          if (!el.classList.contains("push-prompt--denied") &&
+              !el.classList.contains("push-prompt--ok")) {
+            el.remove();
+          }
+        });
+      } else {
+        localStorage.removeItem("pushSubscribed");
+      }
+    } catch (_) { /* swallow — banner stays as-is */ }
   }
 
   // Click handler. Fetches the public VAPID key, asks the browser for
@@ -1890,7 +1919,7 @@
         const data = await saveRes.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${saveRes.status}`);
       }
-      sessionStorage.setItem("pushSubscribed", "1");
+      localStorage.setItem("pushSubscribed", "1");
       // Replace the prompt with a confirmation pill (in-place).
       const prompt = btn && btn.closest(".push-prompt");
       if (prompt) {
@@ -2633,6 +2662,7 @@
         content.style.opacity = 1;
         styleLinksAsButtons();
         markMessageBoardSeen();
+        confirmPushSubscriptionState();
         return;
       }
 
