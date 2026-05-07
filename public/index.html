@@ -659,6 +659,52 @@
 
     .expedition-card .event-link:hover { opacity: 0.85; }
 
+    /* Generic "Read more" clamp + toggle.
+       Any element with .readmore-content gets clipped to ~5 lines until
+       the user expands it. Add to any rendered block where the source
+       content can be unpredictably long. The matching toggle button is
+       inserted by applyReadMoreClamping() in JS — only when the content
+       actually overflows the clamp. */
+    .readmore-content {
+      max-height: 6.5em;
+      overflow: hidden;
+      transition: max-height 0.25s ease;
+    }
+    .readmore-content.is-expanded {
+      max-height: 1500px; /* effectively unbounded */
+    }
+    /* Applied by JS when content already fits — neutralises the clamp so
+       short blocks don't arbitrarily cut at the max-height. */
+    .readmore-content.readmore-no-clamp {
+      max-height: none;
+      overflow: visible;
+    }
+    .readmore-toggle {
+      margin-top: 8px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: #5b7f9e;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .readmore-toggle:hover { opacity: 0.7; }
+
+    /* Keep expedition cards roughly the same height regardless of how
+       much copy is in event-info, so the row reads as a tidy grid even
+       when one card has way more text than the others. The clamp + Read
+       More handles overflow above this minimum. */
+    .expedition-grid > .expedition-card {
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+    }
+    .expedition-card.expedition-card { /* keep specificity simple */ }
+
     .tbc {
       color: #bbb;
       font-style: italic;
@@ -1902,7 +1948,11 @@
     const p = portalData;
 
     function info(val) {
-      return val ? `<div class="event-info">${applyTextBreaks(val)}</div>` : "";
+      // Wrap in .readmore-content so applyReadMoreClamping() can clamp +
+      // toggle the long ones without affecting short ones.
+      return val
+        ? `<div class="event-info readmore-content">${applyTextBreaks(val)}</div>`
+        : "";
     }
 
     const events = [
@@ -1948,14 +1998,18 @@
         <div class="flight-card">
           <h4>DEPARTURE FLIGHT</h4>
           <div class="flight-date">${formatDate(p.flight_departure_date)}</div>
-          ${detail("Airline(s)", p.departure_airlines)}
-          ${detail("Routing", p.departure_routing)}
+          <div class="readmore-content">
+            ${detail("Airline(s)", p.departure_airlines)}
+            ${detail("Routing", p.departure_routing)}
+          </div>
         </div>
         <div class="flight-card return">
           <h4>RETURN FLIGHT</h4>
           <div class="flight-date">${formatDate(p.return_flight_date)}</div>
-          ${detail("Airline(s)", p.return_flight_airlines)}
-          ${detail("Routing", p.return_flight_routing)}
+          <div class="readmore-content">
+            ${detail("Airline(s)", p.return_flight_airlines)}
+            ${detail("Routing", p.return_flight_routing)}
+          </div>
         </div>
       </div>
       <div class="insurance-section">
@@ -2251,6 +2305,7 @@
         content.innerHTML = renderMessageBoardAlert() + loadExpeditionOverview();
         content.style.opacity = 1;
         styleLinksAsButtons();
+        applyReadMoreClamping(content);
         await loadTeacherList(content);
         return;
       }
@@ -2278,6 +2333,7 @@
       if (field === "destination_overview_content") {
         content.innerHTML = loadFlightsAndInsurance();
         content.style.opacity = 1;
+        applyReadMoreClamping(content);
         await loadInsurance();
         return;
       }
@@ -2699,6 +2755,38 @@
         ${bioHtml ? `<div class="leader-card-bio" data-bio><div class="leader-card-bio-inner">${bioHtml}</div></div>` : ""}
       </div>
     `;
+  }
+
+  // Generic "Read more" clamping for any block that has the
+  // .readmore-content CSS class. Run after rendering finishes, scans
+  // each block, and only adds a toggle button when the content
+  // actually overflows the clamped height. Idempotent — safe to run
+  // multiple times on the same scope.
+  function applyReadMoreClamping(scope) {
+    const root = scope || document;
+    const blocks = root.querySelectorAll(".readmore-content");
+    blocks.forEach(block => {
+      if (block.dataset.readmoreInit === "1") return;
+      block.dataset.readmoreInit = "1";
+      // Compare full content height vs clamped wrapper. Tiny fudge
+      // guards against fractional-pixel false positives in browsers.
+      const overflows = block.scrollHeight > block.clientHeight + 2;
+      if (!overflows) {
+        // Short content — let it expand naturally so the clamp doesn't
+        // arbitrarily cut a one-line block at, say, 5.9em.
+        block.classList.add("readmore-no-clamp");
+        return;
+      }
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "readmore-toggle";
+      toggle.textContent = "Read more";
+      toggle.addEventListener("click", () => {
+        const expanded = block.classList.toggle("is-expanded");
+        toggle.textContent = expanded ? "Read less" : "Read more";
+      });
+      block.parentNode.insertBefore(toggle, block.nextSibling);
+    });
   }
 
   // Post-render pass that walks the cards just rendered and decides which
