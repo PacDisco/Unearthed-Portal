@@ -22,7 +22,15 @@
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 
-const ALLOWED_ROLES = new Set([
+// Roles the FORM is allowed to ASSIGN to a new admin. The form's dropdown
+// is hardcoded to these two — these are the only roles that show up as
+// cards on the Expedition Overview. If you want to assign a different
+// role (e.g. "Founder", "Director") you can either:
+//   (a) edit the dropdown in admin-invite.html to expose it, OR
+//   (b) set admin_role on the contact in HubSpot directly.
+// Either way, ANY non-empty admin_role grants login + trip-picker access
+// to the holder — see the inviter check below.
+const ALLOWED_ASSIGNABLE_ROLES = new Set([
   "Program Administrator",
   "Operations Manager"
 ]);
@@ -70,8 +78,8 @@ export async function handler(event) {
     if (!inviterEmail || !inviteeEmail || !role) {
       return jsonResponse(400, { error: "Missing inviterEmail, inviteeEmail or role" });
     }
-    if (!ALLOWED_ROLES.has(role)) {
-      return jsonResponse(400, { error: `Role must be one of: ${[...ALLOWED_ROLES].join(", ")}` });
+    if (!ALLOWED_ASSIGNABLE_ROLES.has(role)) {
+      return jsonResponse(400, { error: `Role must be one of: ${[...ALLOWED_ASSIGNABLE_ROLES].join(", ")}` });
     }
 
     const headers = {
@@ -79,10 +87,14 @@ export async function handler(event) {
       "Content-Type": "application/json"
     };
 
-    // 1. Verify the caller is an admin in HubSpot.
+    // 1. Verify the caller is an admin in HubSpot. ANY non-empty
+    //    admin_role grants invite permission — not just the two roles
+    //    the form lets you assign — so e.g. a "Founder" or "Director"
+    //    can also invite Program Administrators / Operations Managers.
     const inviter = await findContactByEmail(inviterEmail, headers);
-    if (!inviter || !ALLOWED_ROLES.has(inviter.properties?.admin_role)) {
-      console.warn(`[admin-invite] Refused — caller ${inviterEmail} is not an admin`);
+    const inviterRole = (inviter?.properties?.admin_role || "").trim();
+    if (!inviter || !inviterRole) {
+      console.warn(`[admin-invite] Refused — caller ${inviterEmail} has no admin_role set`);
       return jsonResponse(403, { error: "You must be an admin to send invites." });
     }
 
