@@ -2133,10 +2133,21 @@
   async function init(retries = 3) {
     try {
       // Admins fetch a specific portal by id. Regular users fetch
-      // their own via email-based contact-association lookup.
-      const portalUrl = adminViewing
-        ? `/.netlify/functions/portal?portalId=${encodeURIComponent(adminPortalId)}`
-        : `/.netlify/functions/portal?email=${encodeURIComponent(email)}`;
+      // their own via email-based contact-association lookup. If the
+      // user is associated with multiple trips, they'll have already
+      // chosen one on /my-trips.html, which stashed the chosen id in
+      // sessionStorage as `selectedPortalId`. We pass that as `?picked=`
+      // so portal.js scopes to it (verified server-side against the
+      // user's real association list).
+      let portalUrl;
+      if (adminViewing) {
+        portalUrl = `/.netlify/functions/portal?portalId=${encodeURIComponent(adminPortalId)}`;
+      } else {
+        const picked = sessionStorage.getItem("selectedPortalId");
+        portalUrl = picked
+          ? `/.netlify/functions/portal?email=${encodeURIComponent(email)}&picked=${encodeURIComponent(picked)}`
+          : `/.netlify/functions/portal?email=${encodeURIComponent(email)}`;
+      }
       console.log("[init] fetching portal URL:", portalUrl);
       const res = await fetch(portalUrl);
       // Netlify returns HTML when a function crashes at startup; try to
@@ -2153,6 +2164,15 @@
       }
 
       console.log("PORTAL DATA:", data);
+
+      // Multi-portal user with no valid `picked` choice yet — bounce
+      // them to /my-trips.html so they can choose which trip to view.
+      if (data.requirePicker) {
+        // Drop any stale picked id so the picker always renders fresh.
+        try { sessionStorage.removeItem("selectedPortalId"); } catch (_) {}
+        window.location.href = "/my-trips.html";
+        return;
+      }
 
       if (data.error === "Contact not found" && retries > 0) {
         console.log(`Retrying... ${retries} attempts left`);
@@ -2198,6 +2218,16 @@
       }
 
       safeRun("renderAdminBanner", () => { if (adminViewing) renderAdminBanner(); });
+      // Reveal the SWITCH TRIP link in the header if this user has more
+      // than one associated trip. Hidden in admin viewing mode (admins
+      // use /admin.html for picking).
+      safeRun("renderSwitchTripLink", () => {
+        const tripCount = data && data.availableTripCount;
+        const sw = document.getElementById("switchTripLink");
+        if (sw && !adminViewing && typeof tripCount === "number" && tripCount > 1) {
+          sw.style.display = "inline-block";
+        }
+      });
       safeRun("set title",         () => {
         document.getElementById("title").innerText = portalData.portal_title || "UNEARTHED";
       });
