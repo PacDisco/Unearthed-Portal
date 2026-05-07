@@ -26,34 +26,48 @@ export default async (request, context) => {
     return jsonResponse({ error: "Missing url" }, 400);
   }
 
-  const apiKey = Netlify.env.get("JOTFORM_API_KEY");
-  if (!apiKey) {
-    return jsonResponse({
-      error: "Jotform is not configured",
-      details: "Set JOTFORM_API_KEY in Netlify environment variables."
-    }, 500);
-  }
-
-  // Refuse to proxy anything that isn't a Jotform URL — otherwise this would
-  // be an open relay for any URL on the internet.
+  // Validate the upstream URL.
   let parsed;
   try {
     parsed = new URL(target);
   } catch (_) {
     return jsonResponse({ error: "Invalid url" }, 400);
   }
+
   const host = parsed.hostname.toLowerCase();
   const isJotform = (
     host === "jotform.com" || host.endsWith(".jotform.com") ||
     host === "jotfor.ms"   || host.endsWith(".jotfor.ms")
   );
-  if (!isJotform) {
-    return jsonResponse({ error: "Only Jotform URLs are allowed" }, 400);
+  // HubSpot file CDN hosts. We allow these so that leader-card photos
+  // (cross-origin HubSpot images that iOS Safari sometimes refuses to
+  // render in <img> when fetched through a service worker) can be
+  // proxied as same-origin and rendered reliably on every device.
+  const isHubSpotCdn = (
+    /\.hubspotusercontent\b/i.test(host) ||  // *.fs1.hubspotusercontent-na1.net etc.
+    host.endsWith(".hubspot.com") ||
+    host === "hubspot.com" ||
+    /\.hubapi\.com$/i.test(host)
+  );
+  if (!isJotform && !isHubSpotCdn) {
+    return jsonResponse({
+      error: "Only Jotform or HubSpot URLs are allowed",
+      host
+    }, 400);
   }
 
-  // Append the API key so Jotform releases the file for download. This
-  // happens at the edge; the parent never sees it.
-  parsed.searchParams.set("apiKey", apiKey);
+  // Per-host upstream config. Jotform requires the API key in the URL;
+  // HubSpot CDN URLs are public and sometimes already signed.
+  if (isJotform) {
+    const apiKey = Netlify.env.get("JOTFORM_API_KEY");
+    if (!apiKey) {
+      return jsonResponse({
+        error: "Jotform is not configured",
+        details: "Set JOTFORM_API_KEY in Netlify environment variables."
+      }, 500);
+    }
+    parsed.searchParams.set("apiKey", apiKey);
+  }
 
   let upstream;
   try {
