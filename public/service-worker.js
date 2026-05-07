@@ -1,7 +1,7 @@
 // Bump this string any time you ship a release that should bust the
 // install-time cache for previously-installed PWA users. The activate
 // handler below deletes any cache whose name doesn't match.
-const CACHE_NAME = "unearthed-v5-push";
+const CACHE_NAME = "unearthed-v6-badge";
 const STATIC_FILES = ["/index.html", "/login.html", "/site.webmanifest"];
 
 // Install — cache static files
@@ -78,7 +78,25 @@ self.addEventListener("push", (e) => {
     renotify: true,
     data: { url: data.url || "/index.html" }
   };
-  e.waitUntil(self.registration.showNotification(title, options));
+
+  // Bump the app-icon badge alongside showing the notification. The
+  // Badging API isn't a hard dependency — older browsers / Android
+  // sometimes don't have it — so we feature-detect and never let a
+  // badge failure kill the notification itself.
+  const badgeBump = (async () => {
+    try {
+      if (self.navigator && typeof self.navigator.setAppBadge === "function") {
+        await self.navigator.setAppBadge(1);
+      }
+    } catch (err) {
+      console.warn("[sw] setAppBadge failed:", err && err.message);
+    }
+  })();
+
+  e.waitUntil(Promise.all([
+    self.registration.showNotification(title, options),
+    badgeBump
+  ]));
 });
 
 self.addEventListener("notificationclick", (e) => {
