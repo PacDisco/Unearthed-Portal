@@ -1,7 +1,7 @@
 // Bump this string any time you ship a release that should bust the
 // install-time cache for previously-installed PWA users. The activate
 // handler below deletes any cache whose name doesn't match.
-const CACHE_NAME = "unearthed-v6-badge";
+const CACHE_NAME = "unearthed-v7-photos";
 const STATIC_FILES = ["/index.html", "/login.html", "/site.webmanifest"];
 
 // Install — cache static files
@@ -22,30 +22,40 @@ self.addEventListener("activate", e => {
   self.clients.claim(); // take control immediately
 });
 
-// Fetch — network first, fall back to cache
+// Fetch — network first for same-origin, total bypass for everything else.
 self.addEventListener("fetch", e => {
   const url = e.request.url;
 
-  // Always go to network for API calls
+  // Always go to network for API calls.
   if (url.includes("/.netlify/functions/") || url.includes("/document-proxy")) {
     e.respondWith(fetch(e.request));
     return;
   }
 
-  // Don't try to handle requests we can't legally cache — Cache.put()
-  // throws on non-http(s) schemes (chrome-extension://, data:, etc.).
-  // Just pass them through to the network and stay out of the way.
-  if (!/^https?:/i.test(url)) {
-    return; // let the browser handle it normally
-  }
-  // Cross-origin POST/PUT requests etc. shouldn't be cached either.
+  // Don't try to handle non-http(s) schemes (chrome-extension://, data:,
+  // blob:, etc.) — Cache.put() throws on them, and the browser already
+  // handles them natively.
+  if (!/^https?:/i.test(url)) return;
+
+  // Cross-origin requests bypass the SW entirely. The browser fetches
+  // them natively without our mediation. This avoids a long-standing
+  // iOS Safari quirk where opaque (cross-origin) responses returned via
+  // a service worker sometimes fail to render in <img> tags, even when
+  // the same URL loads fine without an SW. HubSpot/CDN-hosted leader
+  // photos hit this path. Same images work on desktop because Chromium
+  // handles SW-mediated opaque responses differently.
+  let sameOrigin = false;
+  try { sameOrigin = new URL(url).origin === self.location.origin; }
+  catch (_) { /* malformed URL — let the browser deal */ return; }
+  if (!sameOrigin) return;
+
+  // Same-origin GETs only past this point.
   if (e.request.method !== "GET") return;
 
-  // Network first for everything else
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        // Only cache successful, basic (same-origin) responses.
+        // Only cache successful basic (same-origin) responses.
         if (res && res.ok && res.type === "basic") {
           const resClone = res.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, resClone))
