@@ -760,15 +760,14 @@
       align-self: center;
     }
 
-    /* Fallback styling for the Unearthed-logo placeholder.
-       Applied when the contact has no headshot configured, or when the
-       configured headshot fails to load (onerror in renderLeaderCard).
-       The logo is a wordmark, not a square portrait, so we contain it
-       inside the circle with padding rather than crop-cover it. */
+    /* Fallback styling for the avatar placeholder. The inline SVG fills
+       the full 96×96 circle (no padding) so the silhouette reads at
+       avatar size. If you swap LEADER_PHOTO_FALLBACK_URL to a custom
+       wordmark or non-square image, increase padding here. */
     .leader-card-photo--fallback {
-      object-fit: contain;
+      object-fit: cover;
       object-position: center;
-      padding: 14px;
+      padding: 0;
       box-sizing: border-box;
       background: #ece6d6;
     }
@@ -1600,13 +1599,16 @@
   // tabs reference them, so you don't need duplicate fields per tab.
   // ============================================================
   const TEACHER_LINKS = [
-    { label: "Student Manual",       prop: "student_manual" },
-    { label: "Leader Manual",        prop: "leader_manual" },
-    { label: "Generic RA",           prop: "generic_risk_assessment" },
-    { label: "Leader Handbook",      prop: "leader_handbook" },
-    { label: "Country RA",           prop: "country_risk_assessment" },
-    { label: "Expedition Budget",    prop: "expedition_budget" },
-    { label: "Country Contact List", prop: "country_contact_list" }
+    { label: "Student Manual",         prop: "student_manual" },
+    { label: "Leader Manual",          prop: "leader_manual" },
+    { label: "Generic Risk Assessment", prop: "generic_risk_assessment" },
+    { label: "Leader Handbook",         prop: "leader_handbook" },
+    { label: "Country Risk Assessment", prop: "country_risk_assessment" },
+    { label: "Expedition Budget",      prop: "expedition_budget" },
+    { label: "Country Contact List",   prop: "country_contact_list" },
+    { label: "Generic Kit Info Flyer", prop: "generic_kit_info_flyer" },
+    { label: "Fundraising Team Tool",  prop: "fundraising_team_tool" },
+    { label: "Fundraising Templates",  prop: "fundraising_templates" }
   ];
 
   // Generic resource-link grid renderer used by the Trip Leader and
@@ -2641,20 +2643,35 @@
       const grid = document.createElement("div");
       grid.className = "teacher-grid";
 
-      // Admins (School Support Manager / Expedition Planning Manager) — rendered
-      // FIRST so they sit at the top of SCHOOL CONTACTS. Same renderLeaderCard
-      // helper as the other roles so spacing/photo size/clamp behaviour
-      // stays aligned across the row.
+      // Roles whose admin cards should expose email + phone on the
+      // Expedition Overview. Roles NOT in this set get a card with only
+      // name + bio (no contact info shown). Per spec:
+      //   School Support Manager      → contact info VISIBLE
+      //   Expedition Planning Manager → no contact info
+      const ADMIN_ROLES_WITH_CONTACT = new Set([
+        "School Support Manager"
+      ]);
+
+      // Admins (School Support Manager / Expedition Planning Manager) —
+      // rendered FIRST so they sit at the top of SCHOOL CONTACTS. Same
+      // renderLeaderCard helper as the other roles so spacing/photo
+      // size/clamp behaviour stays aligned across the row.
       admins.forEach(a => {
         const bioHtml = a.bio ? applyTextBreaks(a.bio) : "";
+        const role = (a.role || "").trim();
+        const showContact = ADMIN_ROLES_WITH_CONTACT.has(role);
+        const contactHtml = (showContact && (a.email || a.phone))
+          ? `<div class="leader-card-contact">
+              ${a.email ? `<a href="mailto:${attrEsc(a.email)}">${attrEsc(a.email)}</a><br>` : ""}
+              ${a.phone ? `<a href="tel:${attrEsc(a.phone)}">${attrEsc(a.phone)}</a>` : ""}
+            </div>`
+          : "";
         grid.innerHTML += renderLeaderCard({
           variant: "admin",
-          roleLabel: (a.role || "ADMIN").toUpperCase(),
+          roleLabel: (role || "ADMIN").toUpperCase(),
           name: a.name,
           photoUrl: a.photoUrl,
-          contactHtml: a.email
-            ? `<div class="leader-card-contact"><a href="mailto:${attrEsc(a.email)}">${attrEsc(a.email)}</a></div>`
-            : "",
+          contactHtml,
           bioHtml
         });
       });
@@ -2705,11 +2722,20 @@
 
   // Fallback shown inside the leader-card photo circle when a contact has
   // no expedition_leader_photo configured (or the configured one fails to
-  // load). The asset lives in the EDA Group HubSpot file manager so it
-  // stays under our control and isn't subject to third-party CDN hotlink
-  // or CORS quirks. Update this constant if the file is ever re-uploaded
-  // (HubSpot file URLs change when you re-upload rather than overwrite).
-  const LEADER_PHOTO_FALLBACK_URL = "https://3855728.fs1.hubspotusercontent-na1.net/hubfs/3855728/EDA%20Group%202025/Unearthed%20Education%202025/Logos/WhatsApp%20Image%202026-05-07%20at%2013.58.15.jpeg";
+  // load). Inline SVG data URI — a generic person silhouette in the
+  // Unearthed earth-tone palette. Self-contained (no external request,
+  // no CORS / hotlink concerns) and always renders cleanly inside the
+  // circular frame regardless of viewport size.
+  // To swap to a custom image (e.g. a square-cropped Unearthed icon),
+  // replace this constant with the asset URL — the rest of the cascade
+  // (object-fit + circular frame) keeps working unchanged.
+  const LEADER_PHOTO_FALLBACK_URL =
+    "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+      `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+         <circle cx="48" cy="36" r="14" fill="#b3a892"/>
+         <path d="M14 88c0-18 15-32 34-32s34 14 34 32v8H14z" fill="#b3a892"/>
+       </svg>`
+    );
 
   // Renders one school-leader / expedition-leader card. Same markup for
   // both — only the variant class and role label differ — so spacing,
