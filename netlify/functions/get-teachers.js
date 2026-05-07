@@ -235,8 +235,19 @@ function collectFileIds(contactRecords, propName) {
 }
 
 // Resolves each File ID against HubSpot's Files API and returns a
-// Map<fileId, fileUrl>. Files API returns one record per ID with a
-// publicly-loadable `url` field; we drop any that 404 or otherwise fail.
+// Map<fileId, fileUrl>.
+//
+// We use the *signed-url* sub-endpoint, NOT the metadata endpoint:
+//   GET /files/v3/files/{id}/signed-url  →  { url: "<direct CDN URL>" }
+// vs.
+//   GET /files/v3/files/{id}            →  { url: "<api-na1.hubspot.com/.../signed-url-redirect>" }
+//
+// The metadata endpoint hands back a HubSpot API URL that 302-redirects
+// to the actual file. Desktop browsers follow that redirect happily,
+// but iOS Safari (especially in PWA mode with a service worker
+// involved) refuses to render a redirected response in <img>. The
+// dedicated signed-url endpoint returns the direct CDN URL the browser
+// can use straight away — no redirect, no auth, no SW gymnastics.
 async function resolveFileIds(idSet, headers) {
   const map = new Map();
   if (!idSet || idSet.size === 0) return map;
@@ -245,11 +256,25 @@ async function resolveFileIds(idSet, headers) {
     [...idSet].map(async (id) => {
       try {
         const res = await fetch(
-          `https://api.hubapi.com/files/v3/files/${encodeURIComponent(id)}`,
+          `https://api.hubapi.com/files/v3/files/${encodeURIComponent(id)}/signed-url`,
           { headers }
         );
         if (!res.ok) {
-          console.warn(`[get-teachers] Files API ${res.status} for fileId ${id}`);
+          // Fall back to the metadata endpoint — useful if signed-url
+          // is gated by scope or the file is configured as fully
+          // public (in which case metadata.url already IS the CDN URL).
+          const metaRes = await fetch(
+            `https://api.hubapi.com/files/v3/files/${encodeURIComponent(id)}`,
+            { headers }
+          );
+          if (!metaRes.ok) {
+            console.warn(`[get-teachers] Files API ${res.status}/${metaRes.status} for fileId ${id}`);
+            return;
+          }
+          const meta = await metaRes.json();
+          if (meta && typeof meta.url === "string" && meta.url) {
+            map.set(id, meta.url);
+          }
           return;
         }
         const data = await res.json();
