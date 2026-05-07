@@ -1,7 +1,7 @@
 // Bump this string any time you ship a release that should bust the
 // install-time cache for previously-installed PWA users. The activate
 // handler below deletes any cache whose name doesn't match.
-const CACHE_NAME = "unearthed-v4-admin";
+const CACHE_NAME = "unearthed-v5-push";
 const STATIC_FILES = ["/index.html", "/login.html", "/site.webmanifest"];
 
 // Install — cache static files
@@ -54,5 +54,52 @@ self.addEventListener("fetch", e => {
         return res;
       })
       .catch(() => caches.match(e.request)) // fall back to cache if offline
+  );
+});
+
+// ---- Web Push ----
+// Triggered by /.netlify/functions/send-message-board-push when an
+// admin updates the message board. Payload is a JSON blob like:
+//   { title: "...", body: "...", url: "/?..." }
+// We show a system notification; clicking it focuses an existing portal
+// tab if one is open, otherwise opens a new one.
+self.addEventListener("push", (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; }
+  catch (_) {
+    try { data = { body: e.data ? e.data.text() : "" }; } catch (_) { /* ignore */ }
+  }
+  const title = data.title || "Unearthed Portal";
+  const options = {
+    body: data.body || "There's a new message on your trip's Message Board.",
+    icon: data.icon || "/web-app-manifest-192x192.png",
+    badge: data.badge || "/favicon-96x96.png",
+    tag: data.tag || "unearthed-message-board", // dedupe consecutive pushes
+    renotify: true,
+    data: { url: data.url || "/index.html" }
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      .then((wins) => {
+        // Focus the first existing portal tab on this origin if there
+        // is one; otherwise open a new one at `url`.
+        const here = new URL(self.location.origin).origin;
+        for (const w of wins) {
+          try {
+            if (new URL(w.url).origin === here) {
+              w.focus();
+              if ("navigate" in w) w.navigate(url);
+              return;
+            }
+          } catch (_) { /* skip */ }
+        }
+        return self.clients.openWindow(url);
+      })
   );
 });
