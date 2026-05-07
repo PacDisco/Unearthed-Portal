@@ -298,6 +298,11 @@ function resolvePhotoUrl(raw, fileUrlMap) {
   return wrapIfJotform(parsed.toString());
 }
 
+// Decides how to expose the photo URL to the browser. We route through
+// the same-origin /document-proxy edge function whenever the upstream is
+// a host the browser sometimes has trouble loading cross-origin from a
+// PWA (Jotform: needs the API key; HubSpot CDN: iOS Safari/PWA flakes
+// on cross-origin images served via the SW). Other URLs pass through.
 function wrapIfJotform(url) {
   if (!url) return null;
   let parsed;
@@ -306,12 +311,26 @@ function wrapIfJotform(url) {
   } catch (_) {
     return null;
   }
+  // Force HTTPS. Mobile browsers (especially iOS Safari in PWA mode)
+  // block mixed-content image loads on HTTPS pages, while desktop
+  // sometimes silently upgrades. Normalising here prevents one
+  // mobile-only failure mode where photos render fine on desktop.
+  if (parsed.protocol === "http:") {
+    parsed.protocol = "https:";
+  }
+  const finalUrl = parsed.toString();
   const host = parsed.hostname.toLowerCase();
   const isJotform = (
     host === "jotform.com" || host.endsWith(".jotform.com") ||
     host === "jotfor.ms"   || host.endsWith(".jotfor.ms")
   );
-  return isJotform
-    ? `/document-proxy?url=${encodeURIComponent(url)}`
-    : url;
+  const isHubSpotCdn = (
+    /\.hubspotusercontent\b/i.test(host) ||
+    host.endsWith(".hubspot.com") ||
+    host === "hubspot.com"
+  );
+  if (isJotform || isHubSpotCdn) {
+    return `/document-proxy?url=${encodeURIComponent(finalUrl)}`;
+  }
+  return finalUrl;
 }
