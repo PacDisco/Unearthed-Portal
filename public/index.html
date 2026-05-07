@@ -382,6 +382,18 @@
       letter-spacing: 0.5px;
       border-radius: 3px;
     }
+    /* Per-value status chip colors. Add another rule here when you want a
+       new value to surface in a different color — class name is the
+       lowercased, hyphenated status string. Anything not listed falls
+       back to the neutral tan above. */
+    .student-card .student-status-value--cleared {
+      background: #d4ede0;
+      color: #2d6b3f;
+    }
+    .student-card .student-status-value--discovery {
+      background: #fde0c9;
+      color: #b85a2a;
+    }
 
     .student-card .student-notes-label {
       font-size: 10px;
@@ -2941,10 +2953,17 @@
         // skipped if both fields are empty so we don't draw an empty box.
         let teacherFieldsBlock = "";
         if (showAppModal) {
+          // Slugify the status so we can target it from CSS, e.g.
+          // "Cleared" → "cleared", "Discovery Call" → "discovery-call".
+          // Any unknown values fall back to the default tan styling.
+          const statusSlug = student.status
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "");
           const statusHtml = student.status
             ? `<div class="student-status">
                  <span class="student-status-label">STATUS</span>
-                 <span class="student-status-value">${attrEsc(student.status)}</span>
+                 <span class="student-status-value student-status-value--${attrEsc(statusSlug)}">${attrEsc(student.status)}</span>
                </div>`
             : "";
           const notesHtml = student.notes
