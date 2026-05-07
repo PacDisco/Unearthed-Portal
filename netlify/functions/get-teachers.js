@@ -298,11 +298,12 @@ function resolvePhotoUrl(raw, fileUrlMap) {
   return wrapIfJotform(parsed.toString());
 }
 
-// Decides how to expose the photo URL to the browser. We route through
-// the same-origin /document-proxy edge function whenever the upstream is
-// a host the browser sometimes has trouble loading cross-origin from a
-// PWA (Jotform: needs the API key; HubSpot CDN: iOS Safari/PWA flakes
-// on cross-origin images served via the SW). Other URLs pass through.
+// Decides how to expose the photo URL to the browser. We route Jotform
+// URLs through the same-origin /document-proxy edge function (because
+// they need the API key appended server-side and would otherwise force
+// the parent to log into Jotform). HubSpot CDN URLs and any other
+// public URL pass through directly — HubSpot signed URLs are sensitive
+// to path/query reserialisation and don't survive a proxy round-trip.
 function wrapIfJotform(url) {
   if (!url) return null;
   let parsed;
@@ -324,13 +325,7 @@ function wrapIfJotform(url) {
     host === "jotform.com" || host.endsWith(".jotform.com") ||
     host === "jotfor.ms"   || host.endsWith(".jotfor.ms")
   );
-  const isHubSpotCdn = (
-    /\.hubspotusercontent\b/i.test(host) ||
-    host.endsWith(".hubspot.com") ||
-    host === "hubspot.com"
-  );
-  if (isJotform || isHubSpotCdn) {
-    return `/document-proxy?url=${encodeURIComponent(finalUrl)}`;
-  }
-  return finalUrl;
+  return isJotform
+    ? `/document-proxy?url=${encodeURIComponent(finalUrl)}`
+    : finalUrl;
 }
