@@ -963,6 +963,58 @@
       text-align: right;
     }
 
+    /* Two-button per-row layout (card + direct debit). The two links
+       stack vertically and each is a small button-like chip with the
+       method label on top and the dollar amount below. */
+    .payment-row .payment-amount-options {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .payment-row .payment-amount .payment-amount-link.payment-amount-link--card,
+    .payment-row .payment-amount .payment-amount-link.payment-amount-link--debit {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-end;
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid #e2decf;
+      background: white;
+      line-height: 1.15;
+    }
+    .payment-row .payment-amount-link--card {
+      border-color: #e8694a;
+    }
+    .payment-row .payment-amount-link--card:hover {
+      background: #fef1ec;
+      color: #e8694a !important;
+      border-color: #e8694a !important;
+    }
+    .payment-row .payment-amount-link--debit {
+      border-color: #59a1aa;
+    }
+    .payment-row .payment-amount-link--debit:hover {
+      background: #ecf6f7;
+      color: #2d6b74 !important;
+      border-color: #59a1aa !important;
+    }
+    .payment-row .payment-amount-method {
+      font-size: 9px;
+      letter-spacing: 1.2px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 1px;
+    }
+    .payment-row .payment-amount-link--card  .payment-amount-method { color: #e8694a; }
+    .payment-row .payment-amount-link--debit .payment-amount-method { color: #2d6b74; }
+    .payment-row .payment-amount-money {
+      font-size: 14px;
+      font-weight: 600;
+      color: inherit;
+    }
+
+
     .payment-row.paid {
       opacity: 0.92;
     }
@@ -1584,7 +1636,10 @@
         paymentIndex: parseInt(el.dataset.paymentIndex, 10) || null,
         baseAmount: el.dataset.baseAmount ? parseFloat(el.dataset.baseAmount) : null,
         chargeAmount: el.dataset.chargeAmount ? parseFloat(el.dataset.chargeAmount) : null,
-        description: el.dataset.description || ""
+        description: el.dataset.description || "",
+        // "card" (default, +3% fee) or "direct_debit" (no fee). Comes from
+        // the data-payment-type attribute set on the per-row link.
+        paymentType: el.dataset.paymentType || "card"
       };
 
       const res = await fetch("/.netlify/functions/create-checkout-session", {
@@ -2049,26 +2104,43 @@
         amountCell = `<span class="paid-badge">PAID</span>` +
           `<span class="payment-amount-note">${formatPaidDetail(paidEntry)}</span>`;
       } else if (chargeNum != null) {
-        const chargeText = fmtMoney(chargeNum);
-        const baseText = fmtMoney(baseNum);
-        // The href is only the *fallback* used when the JS Stripe call
-        // fails (or the user middle-clicks). The Stripe Checkout flow
-        // itself runs through startCheckout() and doesn't depend on this
-        // URL — so we still render the clickable button even when there
-        // is no payment_form_url on the trip OR the global record.
-        const fallbackLink = buildPaymentLink(i, baseNum, chargeNum);
-        const tripName = portalData.portal_title || portalData.destination || "Unearthed";
-        const description = `${tripName} — Payment ${i}`;
-        const main = `<a href="${fallbackLink || "#"}"
+        // Two payment options per row:
+        //   1. Card with 3% processing fee   (chargeNum = base × 1.03)
+        //   2. Direct debit, no fee          (charges base exactly)
+        // Each is its own clickable button that hits startCheckout()
+        // with a different paymentType, which the backend translates
+        // into different Stripe payment_method_types and amount.
+        const cardChargeText  = fmtMoney(chargeNum);
+        const debitChargeText = fmtMoney(baseNum);
+        const baseText        = fmtMoney(baseNum);
+        const fallbackLink    = buildPaymentLink(i, baseNum, chargeNum);
+        const tripName        = portalData.portal_title || portalData.destination || "Unearthed";
+        const description     = `${tripName} — Payment ${i}`;
+
+        const cardLink = `<a href="${fallbackLink || "#"}"
               target="_blank" rel="noopener"
-              class="payment-amount-link"
-              title="Pay this installment (includes 3% processing fee)"
+              class="payment-amount-link payment-amount-link--card"
+              title="Pay by card (includes 3% processing fee)"
               data-payment-index="${i}"
               data-base-amount="${baseNum}"
               data-charge-amount="${chargeNum}"
               data-description="${attrEsc(description)}"
-              onclick="return startCheckout(event, this);">${chargeText}</a>`;
-        amountCell = `${main}<span class="payment-amount-note">${baseText} + 3% fee</span>`;
+              data-payment-type="card"
+              onclick="return startCheckout(event, this);"><span class="payment-amount-method">CARD</span><span class="payment-amount-money">${cardChargeText}</span></a>`;
+
+        const debitLink = `<a href="${fallbackLink || "#"}"
+              target="_blank" rel="noopener"
+              class="payment-amount-link payment-amount-link--debit"
+              title="Pay by direct debit (no processing fee)"
+              data-payment-index="${i}"
+              data-base-amount="${baseNum}"
+              data-charge-amount="${baseNum}"
+              data-description="${attrEsc(description)}"
+              data-payment-type="direct_debit"
+              onclick="return startCheckout(event, this);"><span class="payment-amount-method">DIRECT DEBIT</span><span class="payment-amount-money">${debitChargeText}</span></a>`;
+
+        amountCell = `<div class="payment-amount-options">${cardLink}${debitLink}</div>` +
+                     `<span class="payment-amount-note">Base ${baseText} · card +3% fee</span>`;
       } else {
         amountCell = '<span class="tbc">TBC</span>';
       }
