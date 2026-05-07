@@ -1955,6 +1955,14 @@
     try { localStorage.setItem(messageBoardLastSeenKey(), new Date().toISOString()); }
     catch (e) { /* ignore */ }
     applyMessageBoardBadge();
+    // Clear the iOS app-icon badge as well — the user has read the
+    // message they were notified about. Feature-detected so non-iOS
+    // browsers / older iOS just no-op.
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.clearAppBadge === "function") {
+        navigator.clearAppBadge().catch(() => {});
+      }
+    } catch (_) { /* ignore */ }
   }
 
   function renderMessageBoardAlert() {
