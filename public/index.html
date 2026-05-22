@@ -761,6 +761,20 @@
       line-height: 1.6;
     }
 
+    /* Auto-linkified URLs inside expedition-card event-info (and any other
+       body copy that uses linkify()). Always underlined so they read as
+       hyperlinks. styleLinksAsButtons() ignores .inline-link, so these
+       are NOT promoted to portal-btn buttons. */
+    .inline-link,
+    .inline-link:link,
+    .inline-link:visited {
+      color: #59a1aa;
+      text-decoration: underline;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .inline-link:hover { text-decoration: underline; opacity: 0.85; }
+
     .expedition-card .event-link {
       display: inline-block;
       margin-top: 8px;
@@ -2016,7 +2030,9 @@
         const trail = trailMatch ? trailMatch[0] : "";
         const url = trail ? match.slice(0, -trail.length) : match;
         const href = /^www\./i.test(url) ? "https://" + url : url;
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${trail}`;
+        // .inline-link tells styleLinksAsButtons() to leave this anchor
+        // alone — it's an inline hyperlink inside body copy, not a CTA.
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="inline-link">${url}</a>${trail}`;
       });
     }).join("");
   }
@@ -3692,7 +3708,7 @@
   }
 
   function styleLinksAsButtons() {
-    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.payment-btn):not(.payment-amount-link):not(.manual-link):not(.teacher-contact a)");
+    const links = document.querySelectorAll("#content a:not(.event-link):not(.flight-link):not(.payment-btn):not(.payment-amount-link):not(.manual-link):not(.inline-link):not(.teacher-contact a)");
     const colors = ["#5b7f9e", "#59a1aa", "#a9a66e", "#d6a380"];
 
     let buttonIndex = 0;
