@@ -1995,6 +1995,32 @@
       .join("<br><br>");
   }
 
+  // Turn bare URLs in a text/HTML string into clickable links. Used by the
+  // expedition overview cards so the team can paste a URL straight into a
+  // HubSpot field (e.g. buildup_day_information) and have it render as a
+  // real hyperlink. Notes on behaviour:
+  //  - Matches http://, https://, and bare www. URLs.
+  //  - Leaves anything already inside an <a>...</a> alone (no double-wrapping).
+  //  - Strips trailing punctuation like ".,;:!?)" so a sentence ending right
+  //    after a URL doesn't get pulled into the href.
+  //  - Bare www. links are prefixed with https:// for the href so they work.
+  function linkify(html) {
+    if (html == null) return "";
+    const parts = String(html).split(/(<a\b[^>]*>[\s\S]*?<\/a>)/i);
+    const urlRe = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+    return parts.map((part, i) => {
+      // Odd-indexed parts are existing <a>...</a> blocks — keep as-is.
+      if (i % 2 === 1) return part;
+      return part.replace(urlRe, (match) => {
+        const trailMatch = match.match(/[).,;:!?]+$/);
+        const trail = trailMatch ? trailMatch[0] : "";
+        const url = trail ? match.slice(0, -trail.length) : match;
+        const href = /^www\./i.test(url) ? "https://" + url : url;
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${trail}`;
+      });
+    }).join("");
+  }
+
   // Used to safely embed strings inside HTML attributes (e.g. data-description).
   function attrEsc(s) {
     return String(s == null ? "" : s)
@@ -2308,8 +2334,12 @@
     function info(val) {
       // Wrap in .readmore-content so applyReadMoreClamping() can clamp +
       // toggle the long ones without affecting short ones.
+      // linkify() turns any bare URL pasted into the HubSpot info field
+      // (e.g. "https://unearthededucation.org") into a clickable link.
+      // Quick Links cards don't go through this helper, so their existing
+      // buttons are unaffected.
       return val
-        ? `<div class="event-info readmore-content">${applyTextBreaks(val)}</div>`
+        ? `<div class="event-info readmore-content">${linkify(applyTextBreaks(val))}</div>`
         : "";
     }
 
@@ -2322,6 +2352,16 @@
       { title: "TRAINING EVENT", date: p.training_event, info: p.training_event_information },
       { title: "FINAL BRIEFING", date: p.final_briefing, info: p.final_briefing_information },
       { title: "BUILD-UP DAY", date: p.buildup_day, info: p.buildup_day_information },
+      // Optional additional workshop — only included when the
+      // `additional_workshop` field on the portal has been filled in.
+      // The field value itself is used as the card title.
+      ...(p.additional_workshop
+        ? [{
+            title: String(p.additional_workshop).toUpperCase(),
+            date: p.additional_workshop_date,
+            info: p.additional_workshop_information
+          }]
+        : []),
       { title: "RE-ENTRY WORKSHOP", date: p.reentry_workshop, info: p.reentry_workshop_information }
     ];
 
