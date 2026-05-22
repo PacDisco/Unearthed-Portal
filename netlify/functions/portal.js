@@ -210,6 +210,7 @@ export async function handler(event) {
       "training_event", "training_event_information",
       "final_briefing", "final_briefing_information",
       "buildup_day", "buildup_day_information",
+      "additional_workshop", "additional_workshop_date", "additional_workshop_information",
       "reentry_workshop", "reentry_workshop_information",
       // Flights
       "flight_departure_date", "departure_airlines", "departure_routing",
