@@ -2846,9 +2846,16 @@
     });
   }
 
+  // URL of the separate leader portal. Shown to anyone who logs in here
+  // and is tagged as a school leader or expedition leader, so they can
+  // bounce themselves over to the right portal.
+  const LEADER_PORTAL_URL = "https://leaders.pacificdiscovery.org";
+
   // Tile visibility for the student build. The only conditional tile left
   // is the Document Uploads tile, which is meant for Parents and Students.
-  // Leader tiles have been removed entirely from this build.
+  // Leader tiles have been removed entirely from this build. We also show
+  // a "go to the leader portal" banner when the logged-in contact carries
+  // a Teacher or Trip Leader label.
   function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
     console.log("RAW LABELS JSON:", JSON.stringify(labels));
@@ -2858,6 +2865,8 @@
 
     const isStudent = safeLabels.includes("Student");
     const isParent  = safeLabels.includes("Parent");
+    const isTeacher = safeLabels.includes("Teacher");
+    const isTripLeader = safeLabels.includes("Trip Leader");
 
     // Hide the Document Uploads tile for non-Parent/Student users (e.g.
     // an admin viewing the portal). Preserves the prior behaviour.
@@ -2865,6 +2874,45 @@
       const familyTile = document.getElementById("familyTile");
       if (familyTile) familyTile.style.display = "none";
     }
+
+    // Show the leader-portal banner when the user is tagged as a school
+    // leader or expedition leader. Suppressed for admins viewing via
+    // /admin.html (they see the admin banner instead).
+    if (!adminViewing && (isTeacher || isTripLeader)) {
+      renderLeaderPortalBanner();
+    }
+  }
+
+  // Inline banner that bounces a school/expedition leader to the separate
+  // leader portal. Stays on screen, dismissible, and persists the dismissal
+  // for the session so a leader who is also a parent on this trip can keep
+  // using the student portal without the banner re-appearing on every nav.
+  function renderLeaderPortalBanner() {
+    if (document.getElementById("leaderPortalBanner")) return;
+    if (sessionStorage.getItem("leaderBannerDismissed") === "1") return;
+    const div = document.createElement("div");
+    div.id = "leaderPortalBanner";
+    div.style.cssText =
+      "background:#2d6b74; color:white; padding:12px 18px; display:flex;" +
+      " align-items:center; gap:14px; font-size:13px; letter-spacing:0.3px;" +
+      " flex-wrap:wrap;";
+    div.innerHTML =
+      '<span style="font-weight:600; letter-spacing:1px;">LEADER ACCOUNT</span>' +
+      '<span style="opacity:0.9; flex:1 1 240px;">You\'re signed in as a school or expedition leader. This is the student portal &mdash; your resources live on the leader portal.</span>' +
+      '<a href="' + LEADER_PORTAL_URL + '"' +
+        ' style="background:white; color:#2d6b74; padding:8px 14px; font-size:11px; font-weight:600; letter-spacing:1.2px; text-decoration:none; border:1px solid white;">' +
+        'GO TO LEADER PORTAL &rarr;</a>' +
+      '<button type="button" onclick="dismissLeaderPortalBanner()"' +
+        ' aria-label="Dismiss"' +
+        ' style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.5); padding:6px 10px; font-size:11px; letter-spacing:1px; cursor:pointer;">' +
+        'DISMISS</button>';
+    document.body.insertBefore(div, document.body.firstChild);
+  }
+
+  function dismissLeaderPortalBanner() {
+    const b = document.getElementById("leaderPortalBanner");
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+    try { sessionStorage.setItem("leaderBannerDismissed", "1"); } catch (_) {}
   }
 
   function logout() {
