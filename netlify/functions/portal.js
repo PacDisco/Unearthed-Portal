@@ -200,7 +200,6 @@ export async function handler(event) {
       "trip_information_content", "destination_overview_content",
       "travel_information_content", "general_information_content",
       "family_information_content", "payments_information_content",
-      "trip_leader_information_content", "teacher_information_content",
       "faqs", "hs_object_id",
       // Payment form URLs
       "payments_form_url", "payment_form_url",
@@ -234,31 +233,17 @@ export async function handler(event) {
       "insurance_overview__faqs", "insurance_policy_wording",
       "documents_upload_form",
       // Message board
-      "message_board", "message_board_posted_at",
-      // ============================================================
-      // Trip Leader resource links (rendered as Details buttons at the
-      // top of the Trip Leader tab; see TRIP_LEADER_LINKS in index.html
-      // for the labels). Each one stores a single URL. Trip-level value
-      // wins; if blank, falls back to the global record's value.
-      // ============================================================
-      "leader_manual",
-      "leader_handbook",
-      "generic_risk_assessment",
-      "country_risk_assessment",
-      "expedition_budget",
-      "country_contact_list",
-      "medical_manual",
-      "inreach_manual",
-      "satellite_phone_manual",
-      "incident_report_link",
-      "accommodation_audit_link",
-      "activity_audit_link",
-      "transport_audit_link",
-      "wise_card_troubleshooting",
-      "emergency_numbers__escalation",
-      "expense__reimbursement_policies",
-      "device_policies",
-      "child_protection_policy"
+      "message_board", "message_board_posted_at"
+      // Leader-only properties (trip_leader_information_content,
+      // teacher_information_content, leader_manual, leader_handbook,
+      // generic_risk_assessment, country_risk_assessment, expedition_budget,
+      // country_contact_list, medical_manual, inreach_manual,
+      // satellite_phone_manual, incident_report_link, accommodation_audit_link,
+      // activity_audit_link, transport_audit_link, wise_card_troubleshooting,
+      // emergency_numbers__escalation, expense__reimbursement_policies,
+      // device_policies, child_protection_policy) have been removed from
+      // this student build. Add them back here if leader tabs are ever
+      // re-introduced.
     ].join(",");
 
     const tripPortalUrl   = `https://api.hubapi.com/crm/v3/objects/${OBJECT}/${portalId}?properties=${PORTAL_PROPERTIES}`;
