@@ -1594,11 +1594,19 @@
     FAQs
   </div>
 
-  <div id="tripLeaderTile" class="tile" onclick="loadSection('trip_leader_information_content')">
+  <!--
+    Leader tiles default to display:none. They are NEVER revealed until
+    applyVisibility() has confirmed (via the server's labels array) that
+    the logged-in user is a Trip Leader / Teacher AND is not also flagged
+    as a Student or Parent. This way a slow / failed labels fetch, or any
+    unexpected label-shape from HubSpot, fails CLOSED instead of flashing
+    leader-only content to students/parents.
+  -->
+  <div id="tripLeaderTile" class="tile" style="display: none;" onclick="loadSection('trip_leader_information_content')">
     EXPEDITION LEADER RESOURCES
   </div>
 
-  <div id="teacherTile" class="tile" onclick="loadSection('teacher_information_content')">
+  <div id="teacherTile" class="tile" style="display: none;" onclick="loadSection('teacher_information_content')">
     SCHOOL LEADER RESOURCES
   </div>
 
@@ -2723,6 +2731,20 @@
   }
 
   function loadSection(field) {
+    // Refuse to render the two leader-only sections unless applyVisibility()
+    // has positively confirmed the current user is allowed to see them.
+    // Belt-and-braces in case someone tries to call loadSection() from the
+    // console / by hand-editing the DOM.
+    const leaderAllowed = window.__leaderTilesAllowed || {};
+    if (field === "teacher_information_content" && !leaderAllowed.teacher) {
+      console.warn("[loadSection] blocked teacher_information_content — not authorized.");
+      return;
+    }
+    if (field === "trip_leader_information_content" && !leaderAllowed.tripLeader) {
+      console.warn("[loadSection] blocked trip_leader_information_content — not authorized.");
+      return;
+    }
+
     setActiveTile(field);
 
     const content = document.getElementById("content");
@@ -3736,22 +3758,55 @@
     });
   }
 
+  // Tile visibility is FAIL-CLOSED for the two leader tiles:
+  // tripLeaderTile + teacherTile default to display:none in the HTML and
+  // are only revealed here, AFTER the server has returned a labels array
+  // that positively confirms the user is a Trip Leader / Teacher AND is
+  // not also flagged as a Student or Parent on this trip. If labels is
+  // missing, empty, or non-array (slow fetch, error, unexpected payload),
+  // the tiles stay hidden. Admins viewing a trip via /admin.html bypass
+  // the check because the server returns the full label set for them.
   function applyVisibility(labels = []) {
     console.log("LABELS:", labels);
-    console.log("TRIP LEADER CHECK:", labels.includes("Trip Leader"));
     console.log("RAW LABELS JSON:", JSON.stringify(labels));
 
-    if (!labels.includes("Parent") && !labels.includes("Student")) {
+    // Guard against unexpected payload shapes (null, undefined, object).
+    const safeLabels = Array.isArray(labels) ? labels : [];
+
+    const isStudent = safeLabels.includes("Student");
+    const isParent  = safeLabels.includes("Parent");
+    const isTeacher = safeLabels.includes("Teacher");
+    const isTripLeader = safeLabels.includes("Trip Leader");
+
+    // Family / Document Uploads tile — visible to Parents AND Students.
+    // Preserve existing behaviour: hide when neither label is present.
+    if (!isParent && !isStudent) {
       document.getElementById("familyTile").style.display = "none";
     }
 
-    if (!labels.includes("Trip Leader")) {
-      document.getElementById("tripLeaderTile").style.display = "none";
+    // Leader tiles: reveal ONLY on positive confirmation. Admin viewers
+    // get full access (server sends all four labels for adminViewing).
+    // A student or parent label disqualifies the user even if a leader
+    // label is also present — fail closed.
+    const allowLeaderTiles =
+      adminViewing || (!isStudent && !isParent);
+
+    const tripLeaderTile = document.getElementById("tripLeaderTile");
+    if (tripLeaderTile && allowLeaderTiles && isTripLeader) {
+      tripLeaderTile.style.display = "";
     }
 
-    if (!labels.includes("Teacher")) {
-      document.getElementById("teacherTile").style.display = "none";
+    const teacherTile = document.getElementById("teacherTile");
+    if (teacherTile && allowLeaderTiles && isTeacher) {
+      teacherTile.style.display = "";
     }
+
+    // Stash the result so loadSection() can refuse to render leader-only
+    // sections if someone tries to invoke them from DevTools.
+    window.__leaderTilesAllowed = {
+      teacher:    !!(teacherTile && allowLeaderTiles && isTeacher),
+      tripLeader: !!(tripLeaderTile && allowLeaderTiles && isTripLeader)
+    };
   }
 
   function logout() {
