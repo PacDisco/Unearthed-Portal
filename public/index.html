@@ -2898,8 +2898,11 @@
 
     // Show the leader-portal banner when the user is tagged as a school
     // leader or expedition leader. Suppressed for admins viewing via
-    // /admin.html (they see the admin banner instead).
-    if (!adminViewing && (isTeacher || isTripLeader)) {
+    // /admin.html (they see the admin banner instead). Also suppressed when
+    // the same account is ALSO a Parent or Student on this trip — a mixed
+    // account should get the normal student/parent experience here rather
+    // than being nudged to the leader portal.
+    if (!adminViewing && (isTeacher || isTripLeader) && !isParent && !isStudent) {
       renderLeaderPortalBanner();
     }
   }
