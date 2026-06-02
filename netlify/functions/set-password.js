@@ -12,6 +12,17 @@ export async function handler(event) {
       };
     }
 
+    // Enforce a minimum length server-side (the set-password page checks this
+    // too, but client checks are bypassable). Only applies to NEW/reset
+    // passwords — existing shorter passwords keep working at login until the
+    // owner next changes them, so no one is locked out.
+    if (String(password).length < 8) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ success: false, error: "Password must be at least 8 characters." })
+      };
+    }
+
     const headers = {
       Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
       "Content-Type": "application/json"
@@ -86,9 +97,10 @@ export async function handler(event) {
     };
 
   } catch (err) {
+    console.error("[set-password] error:", err?.message || err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: "Server error" })
     };
   }
 }

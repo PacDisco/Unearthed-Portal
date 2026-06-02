@@ -50,12 +50,10 @@ export async function handler(event) {
     );
 
     if (!contactRes.ok) {
+      console.error("[get-paid-payments] contact fetch failed:", (await contactRes.text().catch(() => "")).slice(0, 300));
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: "Contact fetch failed",
-          details: await contactRes.text()
-        })
+        body: JSON.stringify({ error: "Contact fetch failed" })
       };
     }
 
@@ -113,12 +111,10 @@ export async function handler(event) {
     );
 
     if (!dealsRes.ok) {
+      console.error("[get-paid-payments] deal batch-read failed:", (await dealsRes.text().catch(() => "")).slice(0, 300));
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: "Deal batch-read failed",
-          details: await dealsRes.text()
-        })
+        body: JSON.stringify({ error: "Deal batch-read failed" })
       };
     }
 
@@ -163,7 +159,7 @@ export async function handler(event) {
     console.error("ERROR:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: "Server error" })
     };
   }
 }

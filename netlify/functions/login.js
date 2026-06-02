@@ -111,9 +111,10 @@ export async function handler(event) {
     };
 
   } catch (err) {
+    console.error("[login] error:", err?.message || err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: "Server error" })
     };
   }
 }

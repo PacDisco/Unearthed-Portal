@@ -102,7 +102,7 @@ export async function handler(event) {
     const contact = contactData.results?.[0];
 
     if (!contact) {
-      console.warn(`[send-magic-link] Email not found: ${cleanEmail}`);
+      console.warn("[send-magic-link] magic-link requested for an unknown email");
       // Don't leak existence: return 200 with a generic success message.
       // Frontend says "If your email is in our system, you'll get a link"
       // regardless of whether the account actually existed.

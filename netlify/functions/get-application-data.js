@@ -109,8 +109,8 @@ export async function handler(event) {
     };
 
   } catch (err) {
-    console.error("ERROR:", err);
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    console.error("[get-application-data] ERROR:", err?.message || err);
+    return { statusCode: 500, body: JSON.stringify({ error: "Server error" }) };
   }
 }
 

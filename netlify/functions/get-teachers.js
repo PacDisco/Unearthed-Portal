@@ -38,12 +38,10 @@ export async function handler(event) {
     );
 
     if (!assocRes.ok) {
+      console.error("[get-teachers] associations fetch failed:", (await assocRes.text().catch(() => "")).slice(0, 300));
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: "Portal contact associations fetch failed",
-          details: await assocRes.text()
-        })
+        body: JSON.stringify({ error: "Portal contact associations fetch failed" })
       };
     }
 
@@ -116,7 +114,7 @@ export async function handler(event) {
     console.error("ERROR:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: "Server error" })
     };
   }
 }

@@ -90,19 +90,15 @@ export async function handler(event) {
       );
 
       if (!contactRes.ok) {
+        console.error("[portal] contact fetch failed:", (await contactRes.text().catch(() => "")).slice(0, 300));
         return {
           statusCode: 500,
-          body: JSON.stringify({
-            error: "Contact fetch failed",
-            details: await contactRes.text()
-          })
+          body: JSON.stringify({ error: "Contact fetch failed" })
         };
       }
 
       const contactData = await contactRes.json();
       const contactId = contactData.results?.[0]?.id;
-
-      console.log("CONTACT ID:", contactId);
 
       if (!contactId) {
         return {
@@ -118,18 +114,14 @@ export async function handler(event) {
       );
 
       if (!assocRes.ok) {
+        console.error("[portal] association fetch failed:", (await assocRes.text().catch(() => "")).slice(0, 300));
         return {
           statusCode: 500,
-          body: JSON.stringify({
-            error: "Association fetch failed",
-            details: await assocRes.text()
-          })
+          body: JSON.stringify({ error: "Association fetch failed" })
         };
       }
 
       const assocData = await assocRes.json();
-
-      console.log("RAW ASSOC RESULTS:", JSON.stringify(assocData.results, null, 2));
 
       if (!assocData.results || assocData.results.length === 0) {
         return {
@@ -168,8 +160,6 @@ export async function handler(event) {
         portalId = associatedPortalIds[0];
       }
 
-      console.log("PORTAL ID:", portalId);
-
       // Get typeIds from this association
       const typeIds = assocData.results
         .flatMap(r => r.associationTypes || [])
@@ -183,16 +173,12 @@ export async function handler(event) {
 
       const labelDefs = await labelDefsRes.json();
 
-      console.log("LABEL DEFS:", JSON.stringify(labelDefs, null, 2));
-
       // Match typeIds to label definitions
       // Use override map for paired labels where HubSpot returns null
       labels = (labelDefs.results || [])
         .filter(def => typeIds.includes(def.typeId))
         .map(def => pairedLabelOverrides[def.typeId] || def.label)
         .filter(l => l && l !== "Program");
-
-      console.log("LABELS EXTRACTED:", labels);
     }
 
     // 3. Get portal content from BOTH the trip's record AND the global
@@ -271,12 +257,10 @@ export async function handler(event) {
     ]);
 
     if (!portalRes.ok) {
+      console.error("[portal] portal fetch failed:", (await portalRes.text().catch(() => "")).slice(0, 300));
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: "Portal fetch failed",
-          details: await portalRes.text()
-        })
+        body: JSON.stringify({ error: "Portal fetch failed" })
       };
     }
 
@@ -297,8 +281,6 @@ export async function handler(event) {
     const tripProps = portal.properties || {};
     const merged = mergeWithGlobalFallback(tripProps, globalProps);
 
-    console.log("PORTAL DATA (merged):", JSON.stringify(merged, null, 2));
-
     // 4. Return data. `availableTripCount` lets the frontend decide
     //    whether to show a "Switch trip" link in the header (only
     //    relevant for users associated with more than one portal).
@@ -317,13 +299,10 @@ export async function handler(event) {
     };
 
   } catch (err) {
-    console.error("ERROR:", err);
+    console.error("[portal] ERROR:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        error: "Server error",
-        details: err.message
-      })
+      body: JSON.stringify({ error: "Server error" })
     };
   }
 }

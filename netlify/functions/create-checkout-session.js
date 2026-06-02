@@ -192,8 +192,7 @@ export async function handler(event) {
       return {
         statusCode: 502,
         body: JSON.stringify({
-          error: "Could not resolve a Stripe customer for this email",
-          details: err.message
+          error: "Could not resolve a Stripe customer for this email"
         })
       };
     }
@@ -283,10 +282,10 @@ export async function handler(event) {
     };
 
   } catch (err) {
-    console.error("ERROR:", err);
+    console.error("[create-checkout-session] ERROR:", err?.message || err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: "Server error" })
     };
   }
 }
