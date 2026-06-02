@@ -1,4 +1,5 @@
 import { createToken } from "./_shared/auth.js";
+import { hashPassword } from "./_shared/password.js";
 
 export async function handler(event) {
   try {
@@ -63,7 +64,7 @@ export async function handler(event) {
         headers,
         body: JSON.stringify({
           properties: {
-            portal_password: password,
+            portal_password: await hashPassword(password),
             portal_token: "",
             portal_token_expiry: ""
           }

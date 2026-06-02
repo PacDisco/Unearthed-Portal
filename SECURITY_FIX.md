@@ -86,6 +86,45 @@ logged-in non-admin gets **403**. The auth helper ships with a self-test
 covering round-trip, tamper/forgery rejection, expiry, self-vs-other, and
 admin-vs-user (16 assertions, all passing).
 
+## Batch 2 — additional hardening (2026)
+
+Found during a wider audit after the initial fix:
+
+- **Payment amount is now server-authoritative.** `create-checkout-session.js`
+  previously charged whatever `chargeAmount` the browser sent — a logged-in
+  user could pay any amount. It now ignores the client amount entirely: it
+  takes `paymentIndex` + `portalId`, verifies the user is associated with that
+  trip (admins may price any trip), reads `payment_amount_<index>` from the
+  trip's Portal record (falling back to the global record), and applies the 3%
+  card fee server-side. The frontend now sends `portalId` instead of an amount.
+
+- **Passwords are now hashed.** New `netlify/functions/_shared/password.js`
+  hashes with scrypt (salted; Node built-in, no new dependency). `set-password`
+  stores a hash; `login` verifies against it. Existing **plaintext passwords
+  still work and are transparently upgraded to a hash on the user's next
+  successful login** — nobody is locked out, no migration script needed. Format:
+  `scrypt$<salt>$<key>`.
+
+- **Stripe redirect URLs pinned.** Success/cancel URLs are built from a fixed
+  base (`PORTAL_BASE_URL`, default the production URL) instead of the request's
+  `Origin`/`Referer` header, closing a post-payment open-redirect.
+
+- **Generic login responses.** `login.js` returns the same "Incorrect email or
+  password" for both unknown emails and wrong passwords, so outsiders can't
+  probe which emails have accounts. (`send-magic-link` already responded
+  generically.) The "set a password via magic link" hint for brand-new accounts
+  is intentionally preserved.
+
+No new required env vars in this batch. `PORTAL_BASE_URL` is optional (defaults
+to the production URL). Tested: 10-assertion password self-test (hash/verify,
+legacy upgrade flag, salt uniqueness) and amount-parser checks, all passing.
+
+### Still open / decided against for now
+- Login rate-limiting / lockout (needs new HubSpot contact properties) — not
+  yet implemented.
+- Security-headers `netlify.toml` (CSP/HSTS/clickjacking) — not yet added.
+- `/document-proxy` token-gating and the push webhook shared secret — see below.
+
 ## Recommended follow-ups (not required to close the report)
 
 - **`/document-proxy` (edge function) is not yet token-gated.** It streams a

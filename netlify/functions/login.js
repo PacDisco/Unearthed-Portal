@@ -1,4 +1,5 @@
 import { createToken } from "./_shared/auth.js";
+import { verifyPassword, hashPassword } from "./_shared/password.js";
 
 export async function handler(event) {
   try {
@@ -40,15 +41,21 @@ export async function handler(event) {
     const contactData = await contactRes.json();
     const contact = contactData.results?.[0];
 
+    // Generic message for both "no such email" and "wrong password" so an
+    // outsider can't probe which email addresses have portal accounts.
+    const GENERIC_FAIL = "Incorrect email or password.";
+
     if (!contact) {
       return {
         statusCode: 200,
-        body: JSON.stringify({ success: false, error: "Email not found" })
+        body: JSON.stringify({ success: false, error: GENERIC_FAIL })
       };
     }
 
     const storedPassword = contact.properties?.portal_password;
 
+    // Kept as a distinct signal: the login page shows a "use the magic link"
+    // hint for accounts that exist but have never set a password.
     if (!storedPassword) {
       return {
         statusCode: 200,
@@ -56,11 +63,33 @@ export async function handler(event) {
       };
     }
 
-    if (storedPassword !== password) {
+    // Verify against the stored value, which may be a scrypt hash or (for
+    // not-yet-migrated accounts) legacy plaintext.
+    const { ok, legacy } = await verifyPassword(password, storedPassword);
+    if (!ok) {
       return {
         statusCode: 200,
-        body: JSON.stringify({ success: false, error: "Incorrect password" })
+        body: JSON.stringify({ success: false, error: GENERIC_FAIL })
       };
+    }
+
+    // Transparent migration: if this account still had a plaintext password,
+    // re-save it as a hash now that we've confirmed the cleartext. Best-effort
+    // — a failure here must not block a valid login.
+    if (legacy && contact.id) {
+      try {
+        const newHash = await hashPassword(password);
+        await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${contact.id}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ properties: { portal_password: newHash } })
+        });
+      } catch (e) {
+        console.warn("[login] password hash upgrade failed (non-fatal):", e?.message || e);
+      }
     }
 
     const adminRole = contact.properties?.admin_role || null;
