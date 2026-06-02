@@ -7,7 +7,7 @@
 // Both lists feed the "SCHOOL CONTACTS" section on the portal so parents
 // see who's accompanying the trip and a short bio of each trip leader.
 
-import { authenticate } from "./_shared/auth.js";
+import { authenticate, tokenFromEvent } from "./_shared/auth.js";
 
 export async function handler(event) {
   try {
@@ -104,6 +104,18 @@ export async function handler(event) {
     teachers.sort((a, b) => a.name.localeCompare(b.name));
     tripLeaders.sort((a, b) => a.name.localeCompare(b.name));
     admins.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Append the caller's session token to any /document-proxy photo URLs so
+    // the (now auth-gated) proxy can verify the viewer — <img> tags can't
+    // send an Authorization header.
+    const callerToken = tokenFromEvent(event);
+    if (callerToken) {
+      for (const c of [...teachers, ...tripLeaders, ...admins]) {
+        if (c.photoUrl && c.photoUrl.startsWith("/document-proxy?")) {
+          c.photoUrl += `&token=${encodeURIComponent(callerToken)}`;
+        }
+      }
+    }
 
     return {
       statusCode: 200,

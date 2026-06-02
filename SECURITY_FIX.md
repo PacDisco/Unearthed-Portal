@@ -119,11 +119,57 @@ No new required env vars in this batch. `PORTAL_BASE_URL` is optional (defaults
 to the production URL). Tested: 10-assertion password self-test (hash/verify,
 legacy upgrade flag, salt uniqueness) and amount-parser checks, all passing.
 
-### Still open / decided against for now
-- Login rate-limiting / lockout (needs new HubSpot contact properties) — not
-  yet implemented.
-- Security-headers `netlify.toml` (CSP/HSTS/clickjacking) — not yet added.
-- `/document-proxy` token-gating and the push webhook shared secret — see below.
+### Batch 2b — quick hardening (also done)
+- Internal HubSpot/Stripe error text no longer returned to the browser (logged
+  server-side instead); top-level catch handlers return a generic message.
+- PII removed from server logs (portal.js full-record/association dumps, the
+  cleartext "email not found" line in send-magic-link).
+- Minimum password length (8) enforced server-side in set-password.js — applies
+  to new/reset passwords only; existing shorter passwords keep working at login.
+- Security headers added via `netlify.toml` (CSP, HSTS, X-Frame-Options,
+  X-Content-Type-Options, Referrer-Policy, Permissions-Policy). CSP allow-list
+  covers Google Fonts, the jsdelivr QR script, and Jotform embed/iframes.
+- `X-Robots-Tag: noindex, nofollow` header + a noindex meta tag on index/login
+  so the portal stays out of search engines.
+
+## Batch 3 — rate-limiting + document-proxy gating
+
+- **Login brute-force throttle.** After 5 consecutive wrong passwords an
+  account is locked for 15 minutes. Backed by two HubSpot contact properties
+  (see below). Fully **fail-open**: a separate, try/catch-wrapped read/write,
+  so if the properties don't exist the throttle silently no-ops and login keeps
+  working. A locked-out legitimate user can still get in via the magic link.
+
+- **Magic-link send cooldown.** `send-magic-link.js` won't re-send to the same
+  account within 60s (anti-inbox-bombing). Reuses the existing
+  `portal_token_expiry` to estimate the last send time — no new property.
+
+- **Document proxy is now authenticated.** `/document-proxy` (edge) and the
+  legacy `get-document` function now require a valid session token. Because the
+  files are loaded from `<img>`/`<a>` tags that can't send an Authorization
+  header, the token rides in the URL (`?token=`); `get-uploaded-documents` and
+  `get-teachers` append the caller's token to the proxy URLs they return. The
+  edge function verifies the same HMAC token via Web Crypto (Deno runtime).
+  Verified cross-runtime: the edge verifier accepts tokens minted by the Node
+  login function and rejects tampered/expired/wrong-secret/missing ones.
+
+### REQUIRED for the login throttle: create two HubSpot contact properties
+Contacts → settings → Properties → Create property (object type **Contact**):
+  1. Internal name `portal_failed_logins`  — type Number (or Single-line text)
+  2. Internal name `portal_lockout_until`  — type Number (or Single-line text)
+Until these exist the throttle is inactive (login still works normally). No new
+property is needed for the magic-link cooldown or the proxy gating.
+
+### Residual notes
+- The session token now appears in document/photo URLs. Those requests are
+  same-origin and Referrer-Policy is set, so leakage is limited; a future
+  improvement is a short-lived, file-scoped token instead of the full session
+  token.
+- The edge proxy still follows upstream redirects (kept to avoid breaking
+  Jotform file delivery); the Jotform key is only attached to Jotform-host
+  requests.
+- Push webhook shared secret (`WEBHOOK_SHARED_SECRET`) is still config-only —
+  set it in Netlify + the HubSpot workflow to lock down that endpoint.
 
 ## Recommended follow-ups (not required to close the report)
 

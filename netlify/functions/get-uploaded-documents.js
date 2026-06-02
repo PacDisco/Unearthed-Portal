@@ -31,7 +31,7 @@
 //         "Upload", "File", "Attachment", "Photo Upload", etc.
 //   Specific labels like "Passport" or "Medical Form" never get overridden,
 //   so the application form is unaffected.
-import { authenticateSelf } from "./_shared/auth.js";
+import { authenticateSelf, tokenFromEvent } from "./_shared/auth.js";
 
 const DOC_NAME_PATTERN_FORMS = new Set([
   // Add a form ID here if it has SPECIFIC upload-field labels but you still
@@ -95,14 +95,22 @@ export async function handler(event) {
     // Process all forms in parallel — title fetch + submissions fetch each.
     const perForm = await Promise.all(idList.map(id => loadFormData(id, cleanEmail, apiKey, baseUrl)));
 
-    // Aggregate
+    // Aggregate. Append the caller's session token to each /document-proxy
+    // URL so the (now auth-gated) proxy can verify the viewer — <img>/<a>
+    // tags can't send an Authorization header, so the token rides in the URL.
+    const callerToken = tokenFromEvent(event);
     const documents = [];
     const forms = [];
     let firstError = null;
     for (const r of perForm) {
       if (r.error && !firstError) firstError = r.error;
       forms.push({ id: r.id, title: r.title || null });
-      for (const d of r.documents) documents.push(d);
+      for (const d of r.documents) {
+        if (callerToken && d.url && d.url.startsWith("/document-proxy?")) {
+          d.url += `&token=${encodeURIComponent(callerToken)}`;
+        }
+        documents.push(d);
+      }
     }
 
     documents.sort((a, b) => {
