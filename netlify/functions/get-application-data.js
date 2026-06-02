@@ -17,6 +17,8 @@
 //                   application-form versions are spun up so old students
 //                   don't drop out of the lookup.
 
+import { authenticateSelf } from "./_shared/auth.js";
+
 const DEFAULT_FORM_IDS = (process.env.JOTFORM_APPLICATION_FORM_ID
   || "251396787451873,253477140703050,260388618557066")
   .split(",").map(s => s.trim()).filter(Boolean);
@@ -28,6 +30,10 @@ export async function handler(event) {
     if (!email) {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing email" }) };
     }
+
+    // Auth: you may only read your own application data (admins may read any).
+    const auth = authenticateSelf(event, email);
+    if (auth.response) return auth.response;
     if (!process.env.JOTFORM_API_KEY) {
       return {
         statusCode: 500,

@@ -44,6 +44,8 @@
 //                                    sepa_debit       → EUR
 //                                    acss_debit       → CAD
 
+import { authenticateSelf } from "./_shared/auth.js";
+
 export async function handler(event) {
   try {
     if (event.httpMethod !== "POST") {
@@ -85,6 +87,11 @@ export async function handler(event) {
     if (!email) {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing email" }) };
     }
+
+    // Auth: you may only start a checkout for your own email (admins: any).
+    const auth = authenticateSelf(event, email);
+    if (auth.response) return auth.response;
+
     const charge = parseFloat(chargeAmount);
     if (!isFinite(charge) || charge <= 0) {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid chargeAmount" }) };

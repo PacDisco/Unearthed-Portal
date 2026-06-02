@@ -31,6 +31,8 @@
 //         "Upload", "File", "Attachment", "Photo Upload", etc.
 //   Specific labels like "Passport" or "Medical Form" never get overridden,
 //   so the application form is unaffected.
+import { authenticateSelf } from "./_shared/auth.js";
+
 const DOC_NAME_PATTERN_FORMS = new Set([
   // Add a form ID here if it has SPECIFIC upload-field labels but you still
   // want the textbox-before-upload value to take precedence. Most forms don't
@@ -62,6 +64,10 @@ export async function handler(event) {
     if (!email) {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing email" }) };
     }
+
+    // Auth: you may only list your own uploaded documents (admins: any).
+    const auth = authenticateSelf(event, email);
+    if (auth.response) return auth.response;
     if (!process.env.JOTFORM_API_KEY) {
       return {
         statusCode: 500,

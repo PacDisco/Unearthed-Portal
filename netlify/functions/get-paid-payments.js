@@ -8,6 +8,8 @@
 // dates appear as "2026-03-12", "27 March 2026", "22.2.26", etc., and commas
 // are occasionally misplaced. The parser below pulls out whatever it can.
 
+import { authenticateSelf } from "./_shared/auth.js";
+
 export async function handler(event) {
   try {
     const email = event.queryStringParameters?.email;
@@ -17,6 +19,10 @@ export async function handler(event) {
         body: JSON.stringify({ error: "Missing email" })
       };
     }
+
+    // Auth: you may only read your own payment data (admins may read any).
+    const auth = authenticateSelf(event, email);
+    if (auth.response) return auth.response;
 
     const cleanEmail = email.toLowerCase().trim();
 

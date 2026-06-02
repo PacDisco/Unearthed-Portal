@@ -1,3 +1,5 @@
+import { authenticateSelf, authenticateAdmin } from "./_shared/auth.js";
+
 export async function handler(event) {
   try {
     const params = event.queryStringParameters || {};
@@ -19,6 +21,20 @@ export async function handler(event) {
         statusCode: 400,
         body: JSON.stringify({ error: "Missing email or portalId" })
       };
+    }
+
+    // ----- Auth -----
+    // Admin viewing path (?portalId=) is the privileged route — it can load
+    // ANY trip and turns on every tab — so it requires a real admin session.
+    // (Previously the frontend gated this with a sessionStorage flag, which
+    // anyone could set by hand.) The regular ?email= path only requires that
+    // you are signed in AS that email; admins may pass any email.
+    if (adminPortalId) {
+      const auth = authenticateAdmin(event);
+      if (auth.response) return auth.response;
+    } else {
+      const auth = authenticateSelf(event, email);
+      if (auth.response) return auth.response;
     }
 
     const OBJECT = "2-58156993";

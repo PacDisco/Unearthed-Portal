@@ -1,5 +1,11 @@
+import { authenticate } from "./_shared/auth.js";
+
 export async function handler(event) {
   try {
+    // Auth: any signed-in user (shared content, but kept behind login).
+    const auth = authenticate(event);
+    if (auth.response) return auth.response;
+
     const OBJECT = "2-58156993";
     const FIXED_ID = "50506535214";
     const headers = {

@@ -1,3 +1,5 @@
+import { createToken } from "./_shared/auth.js";
+
 export async function handler(event) {
   try {
     const { email, password } = JSON.parse(event.body);
@@ -61,14 +63,20 @@ export async function handler(event) {
       };
     }
 
+    const adminRole = contact.properties?.admin_role || null;
+
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
         email: cleanEmail,
+        // Signed session token. The browser stores this and sends it on
+        // every subsequent request (Authorization: Bearer …). The server
+        // verifies it instead of trusting a caller-supplied email/role.
+        token: createToken({ email: cleanEmail, role: adminRole }),
         // Optional fields. The login page checks adminRole to decide
         // whether to land the user on /admin.html or the regular portal.
-        adminRole: contact.properties?.admin_role || null,
+        adminRole,
         firstName: contact.properties?.firstname || null
       })
     };

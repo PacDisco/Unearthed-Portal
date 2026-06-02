@@ -215,6 +215,11 @@
 
       if (data.success) {
         sessionStorage.setItem("portalEmail", data.email || email);
+        // Signed session token — sent as a Bearer header on every API call
+        // so the server can verify the caller. Without it the data and admin
+        // endpoints now reject the request.
+        if (data.token) sessionStorage.setItem("portalToken", data.token);
+        else sessionStorage.removeItem("portalToken");
         // Stash admin metadata so admin.html and index.html can detect
         // the role without a second login round-trip.
         if (data.adminRole) sessionStorage.setItem("adminRole", data.adminRole);
