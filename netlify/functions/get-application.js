@@ -3,7 +3,9 @@
 // Returns the logged-in user's OWN application submission, ready to render in
 // the secure portal edit form. Security model:
 //   1. Caller must present a valid signed session token (Authorization:
-//      Bearer <token>, issued by login.js). No token => 401.
+//      Bearer <token>, issued by login.js). No token => 401. Uses the
+//      portal's shared session auth (_shared/auth.js), same as every other
+//      protected endpoint.
 //   2. The email is taken from the *verified* token payload, never from the
 //      request — so a caller cannot ask for someone else's application.
 //   3. The submission ID is resolved server-side and is NOT returned to the
@@ -11,7 +13,7 @@
 //   4. Sensitive field values (passport, health, etc.) are withheld entirely;
 //      the client is told only that a value exists.
 
-import { verifyRequest } from "./lib/session.js";
+import { authenticate } from "./_shared/auth.js";
 import { findSubmissionByEmail, buildClientFields } from "./lib/jotform.js";
 
 function json(statusCode, payload) {
@@ -24,23 +26,18 @@ export async function handler(event) {
       return json(405, { error: "Method not allowed" });
     }
 
-    // 1. Authenticate.
-    let auth;
-    try {
-      auth = verifyRequest(event);
-    } catch (e) {
-      // Thrown only when PORTAL_SESSION_SECRET is missing/misconfigured.
-      console.error("[get-application] session config error:", e?.message || e);
-      return json(500, { error: "Server auth is not configured." });
-    }
-    if (!auth.ok) return json(401, { error: "Not authenticated", detail: auth.error });
+    // 1. Authenticate against the portal's shared session token. authenticate()
+    //    returns { response } (a ready 401/500) on failure, or { session } with
+    //    the verified { email, role } payload on success.
+    const { session, response } = authenticate(event);
+    if (response) return response;
 
     if (!process.env.JOTFORM_API_KEY) {
       return json(500, { error: "Jotform is not configured." });
     }
 
     // 2. Resolve the caller's own submission from the verified email.
-    const result = await findSubmissionByEmail(auth.email);
+    const result = await findSubmissionByEmail(session.email);
     if (!result.found) {
       return json(200, {
         found: false,
