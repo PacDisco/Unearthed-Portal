@@ -2,7 +2,8 @@
 //
 // Applies the user's edits to their OWN application submission. Security model
 // mirrors get-application:
-//   1. Valid signed session token required (Authorization: Bearer <token>).
+//   1. Valid signed session token required (Authorization: Bearer <token>),
+//      verified via the portal's shared session auth (_shared/auth.js).
 //   2. Email comes from the verified token; the submission ID is resolved
 //      server-side from that email. The client CANNOT supply a submission ID.
 //   3. Only editable field types are written; sensitive fields left blank are
@@ -13,7 +14,7 @@
 // `changes` should contain only fields the user actually edited. Any blank
 // sensitive field is dropped server-side as a second line of defence.
 
-import { verifyRequest } from "./lib/session.js";
+import { authenticate } from "./_shared/auth.js";
 import { findSubmissionByEmail, buildUpdatePayload, updateSubmission } from "./lib/jotform.js";
 
 function json(statusCode, payload) {
@@ -26,15 +27,9 @@ export async function handler(event) {
       return json(405, { error: "Method not allowed" });
     }
 
-    // 1. Authenticate.
-    let auth;
-    try {
-      auth = verifyRequest(event);
-    } catch (e) {
-      console.error("[update-application] session config error:", e?.message || e);
-      return json(500, { error: "Server auth is not configured." });
-    }
-    if (!auth.ok) return json(401, { error: "Not authenticated", detail: auth.error });
+    // 1. Authenticate against the portal's shared session token.
+    const { session, response } = authenticate(event);
+    if (response) return response;
 
     if (!process.env.JOTFORM_API_KEY) {
       return json(500, { error: "Jotform is not configured." });
@@ -56,7 +51,7 @@ export async function handler(event) {
     }
 
     // 3. Resolve the caller's own submission server-side.
-    const result = await findSubmissionByEmail(auth.email);
+    const result = await findSubmissionByEmail(session.email);
     if (!result.found) {
       return json(404, { error: "No application submission found for your account." });
     }
