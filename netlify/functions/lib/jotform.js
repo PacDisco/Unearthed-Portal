@@ -13,9 +13,13 @@
 //   JOTFORM_BASE_URL            — default https://api.jotform.com
 //   JOTFORM_APPLICATION_FORM_ID — comma-separated form ID(s) to search when
 //                                 resolving a user's submission by email.
-//                                 Defaults to the current PD application form.
+//                                 Defaults to the two current Unearthed
+//                                 application forms below. The user's most
+//                                 recent matching submission across all listed
+//                                 forms wins.
 
-const DEFAULT_FORM_IDS = (process.env.JOTFORM_APPLICATION_FORM_ID || "240277257210046")
+const DEFAULT_FORM_IDS = (process.env.JOTFORM_APPLICATION_FORM_ID
+  || "251396787451873,261220345497052")
   .split(",").map(s => s.trim()).filter(Boolean);
 
 function apiKey() {
