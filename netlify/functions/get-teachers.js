@@ -13,7 +13,7 @@ export async function handler(event) {
   try {
     // Auth: any signed-in user. Returns staff names + contact details, so we
     // don't want it enumerable by portalId without a session.
-    const auth = authenticate(event);
+    const auth = await authenticate(event);
     if (auth.response) return auth.response;
 
     const { portalId } = event.queryStringParameters || {};

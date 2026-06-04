@@ -78,7 +78,9 @@ export async function handler(event) {
           // admin_role + firstname are returned to the browser so the
           // login page can route admins straight to /admin.html and
           // greet by name. portal_password is what we authenticate against.
-          properties: ["email", "portal_password", "admin_role", "firstname"]
+          // portal_token_version is stamped into the session token so logout
+          // can revoke it later.
+          properties: ["email", "portal_password", "admin_role", "firstname", "portal_token_version"]
         })
       }
     );
@@ -170,6 +172,7 @@ export async function handler(event) {
     }
 
     const adminRole = contact.properties?.admin_role || null;
+    const tokenVersion = parseInt(contact.properties?.portal_token_version || "0", 10) || 0;
 
     return {
       statusCode: 200,
@@ -179,7 +182,8 @@ export async function handler(event) {
         // Signed session token. The browser stores this and sends it on
         // every subsequent request (Authorization: Bearer …). The server
         // verifies it instead of trusting a caller-supplied email/role.
-        token: createToken({ email: cleanEmail, role: adminRole }),
+        // `ver` lets logout revoke this token (see _shared/auth.js).
+        token: createToken({ email: cleanEmail, role: adminRole, ver: tokenVersion }),
         // Optional fields. The login page checks adminRole to decide
         // whether to land the user on /admin.html or the regular portal.
         adminRole,

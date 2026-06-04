@@ -42,7 +42,7 @@ export async function handler(event) {
               value: email
             }]
           }],
-          properties: ["email", "portal_token", "portal_token_expiry", "admin_role"]
+          properties: ["email", "portal_token", "portal_token_expiry", "admin_role", "portal_token_version"]
         })
       }
     );
@@ -86,12 +86,13 @@ export async function handler(event) {
     // The set-password page logs the user straight in, so hand back a
     // signed session token (and their role) just like login.js does.
     const adminRole = contact.properties?.admin_role || null;
+    const tokenVersion = parseInt(contact.properties?.portal_token_version || "0", 10) || 0;
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
-        token: createToken({ email: String(email).toLowerCase().trim(), role: adminRole }),
+        token: createToken({ email: String(email).toLowerCase().trim(), role: adminRole, ver: tokenVersion }),
         adminRole
       })
     };

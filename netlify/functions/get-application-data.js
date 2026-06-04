@@ -32,7 +32,7 @@ export async function handler(event) {
     }
 
     // Auth: you may only read your own application data (admins may read any).
-    const auth = authenticateSelf(event, email);
+    const auth = await authenticateSelf(event, email);
     if (auth.response) return auth.response;
     if (!process.env.JOTFORM_API_KEY) {
       return {

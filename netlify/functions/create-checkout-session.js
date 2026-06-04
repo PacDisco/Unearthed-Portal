@@ -94,7 +94,7 @@ export async function handler(event) {
     }
 
     // Auth: you may only start a checkout for your own email (admins: any).
-    const auth = authenticateSelf(event, email);
+    const auth = await authenticateSelf(event, email);
     if (auth.response) return auth.response;
     const session = auth.session;
 

@@ -30,10 +30,10 @@ export async function handler(event) {
     // anyone could set by hand.) The regular ?email= path only requires that
     // you are signed in AS that email; admins may pass any email.
     if (adminPortalId) {
-      const auth = authenticateAdmin(event);
+      const auth = await authenticateAdmin(event);
       if (auth.response) return auth.response;
     } else {
-      const auth = authenticateSelf(event, email);
+      const auth = await authenticateSelf(event, email);
       if (auth.response) return auth.response;
     }
 

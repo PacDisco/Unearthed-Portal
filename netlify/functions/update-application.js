@@ -28,7 +28,7 @@ export async function handler(event) {
     }
 
     // 1. Authenticate against the portal's shared session token.
-    const { session, response } = authenticate(event);
+    const { session, response } = await authenticate(event);
     if (response) return response;
 
     if (!process.env.JOTFORM_API_KEY) {
