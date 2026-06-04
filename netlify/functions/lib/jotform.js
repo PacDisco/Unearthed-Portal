@@ -13,13 +13,15 @@
 //   JOTFORM_BASE_URL            — default https://api.jotform.com
 //   JOTFORM_APPLICATION_FORM_ID — comma-separated form ID(s) to search when
 //                                 resolving a user's submission by email.
-//                                 Defaults to the two current Unearthed
-//                                 application forms below. The user's most
-//                                 recent matching submission across all listed
-//                                 forms wins.
+//                                 Defaults to ONLY the Unearthed application
+//                                 form (251396787451873). The document-upload
+//                                 form (261220345497052) is intentionally
+//                                 excluded so the editor can never load it —
+//                                 otherwise a more-recent doc-upload submission
+//                                 would win over the application submission.
 
 const DEFAULT_FORM_IDS = (process.env.JOTFORM_APPLICATION_FORM_ID
-  || "251396787451873,261220345497052")
+  || "251396787451873")
   .split(",").map(s => s.trim()).filter(Boolean);
 
 function apiKey() {
