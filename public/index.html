@@ -1317,6 +1317,37 @@
 
   let portalData = {};
 
+  // ----- Currency -----
+  // The program's currency comes from the `program_currency` dropdown on the
+  // Portal record in HubSpot (ISO 4217, e.g. "USD", "NZD"). Everything shown
+  // as money is formatted in this currency; falls back to NZD when unset.
+  const SUPPORTED_CURRENCIES = [
+    "USD","EUR","GBP","CAD","AUD","NZD","JPY","CHF",
+    "SGD","HKD","SEK","NOK","DKK","ZAR","AED"
+  ];
+  // Currencies for which a Stripe bank-debit (no-fee) method exists, plus the
+  // region hint shown on the bank-transfer option.
+  const BANK_DEBIT_REGION = {
+    NZD: "NZ ONLY", USD: "US ONLY", AUD: "AU ONLY",
+    GBP: "UK ONLY", EUR: "EU ONLY", CAD: "CA ONLY"
+  };
+  function programCurrency() {
+    const c = String(portalData.program_currency || "").trim().toUpperCase();
+    return SUPPORTED_CURRENCIES.includes(c) ? c : "NZD";
+  }
+  function fmtCurrency(n, opts) {
+    const num = parseFloat(n);
+    if (!isFinite(num)) return "";
+    const cur = programCurrency();
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: cur, ...(opts || {}) }).format(num);
+    } catch (e) {
+      return `${cur} ${num.toLocaleString()}`;
+    }
+  }
+  function bankDebitRegionLabel() { return BANK_DEBIT_REGION[programCurrency()] || ""; }
+  function currencyHasBankDebit() { return !!BANK_DEBIT_REGION[programCurrency()]; }
+
   const tileColors = ["active-teal", "active-sand", "active-olive", "active-blue", "active-teal", "active-sand", "active-olive", "active-sand"];
 
   // ============================================================
@@ -1830,7 +1861,7 @@
       safeRun("set price",         () => {
         if (portalData.price) {
           document.getElementById("programPrice").innerText =
-            `PRICE: $${parseFloat(portalData.price).toLocaleString()}`;
+            `PRICE: ${fmtCurrency(portalData.price, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
         }
       });
       safeRun("applyVisibility",        () => applyVisibility(portalData.labels));
@@ -2134,7 +2165,9 @@
     }
 
     function fmtMoney(n) {
-      return `$${parseFloat(n).toLocaleString("en-NZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      // Formats in the program's currency (program_currency on the Portal
+      // record), e.g. "$1,030.00" for NZD/USD or "¥1,030" for JPY.
+      return fmtCurrency(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     // Builds the FALLBACK URL for a specific payment row — used as the
@@ -2228,7 +2261,12 @@
               data-payment-type="card"
               onclick="return startCheckout(event, this);"><span class="payment-amount-headline">${cardIcon}<span class="payment-amount-method">CARD</span></span><span class="payment-amount-money">${cardChargeText}</span></a>`;
 
-        const debitLink = `<a href="${fallbackLink || "#"}"
+        // Bank transfer (direct debit) is only offered for currencies that
+        // have a matching Stripe bank-debit method, and the region badge
+        // reflects that currency's home region (e.g. "US ONLY" for USD).
+        const debitRegion = bankDebitRegionLabel();
+        const debitLink = currencyHasBankDebit()
+          ? `<a href="${fallbackLink || "#"}"
               target="_blank" rel="noopener"
               class="payment-amount-link payment-amount-link--debit"
               title="Pay by bank transfer (no processing fee)"
@@ -2237,7 +2275,8 @@
               data-charge-amount="${baseNum}"
               data-description="${attrEsc(description)}"
               data-payment-type="direct_debit"
-              onclick="return startCheckout(event, this);"><span class="payment-amount-headline">${bankIcon}<span class="payment-amount-method">BANK TRANSFER</span><span class="payment-amount-badge">NZ ONLY</span><span class="payment-amount-badge payment-amount-badge--good">NO FEE</span></span><span class="payment-amount-money">${debitChargeText}</span></a>`;
+              onclick="return startCheckout(event, this);"><span class="payment-amount-headline">${bankIcon}<span class="payment-amount-method">BANK TRANSFER</span><span class="payment-amount-badge">${debitRegion}</span><span class="payment-amount-badge payment-amount-badge--good">NO FEE</span></span><span class="payment-amount-money">${debitChargeText}</span></a>`
+          : "";
 
         amountCell = `<div class="payment-amount-options">${cardLink}${debitLink}</div>` +
                      `<span class="payment-amount-note">Base ${baseText} · card +3% fee</span>`;

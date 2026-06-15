@@ -24,27 +24,35 @@
 // Returns:  { url, id }   on success
 //           { error, details? }   on failure
 //
+// Currency: driven per-program by the `program_currency` dropdown (ISO 4217,
+// e.g. "USD", "NZD") on the Portal record in HubSpot. The amount, the Stripe
+// line-item currency, and the bank-debit method are all derived from it. If
+// program_currency is blank on both the trip and the global record we fall
+// back to the STRIPE_CURRENCY env var, then to NZD.
+//
 // Env vars worth knowing:
 //   STRIPE_SECRET_KEY              required
-//   STRIPE_CURRENCY                default "nzd"
-//   STRIPE_DIRECT_DEBIT_METHODS    comma-separated Stripe payment_method_types
-//                                  for the no-fee path. Defaults to
-//                                  "nz_bank_account" (NZ BECS Direct Debit) —
-//                                  matches Unearthed's NZD currency and a
-//                                  Stripe account that has "NZ BECS Direct
-//                                  Debit" enabled in Settings → Payment
-//                                  methods. Override if your account has
-//                                  other bank-debit methods enabled. Each
-//                                  has a currency requirement enforced by
-//                                  Stripe:
-//                                    nz_bank_account  → NZD
-//                                    us_bank_account  → USD
-//                                    au_becs_debit    → AUD
-//                                    bacs_debit       → GBP
-//                                    sepa_debit       → EUR
-//                                    acss_debit       → CAD
+//   STRIPE_CURRENCY                optional fallback when program_currency is
+//                                  unset (default "nzd")
+//   STRIPE_DIRECT_DEBIT_METHODS    optional override for the no-fee bank-debit
+//                                  path. When unset, the method is chosen
+//                                  automatically from program_currency:
+//                                    NZD → nz_bank_account (NZ BECS)
+//                                    USD → us_bank_account (ACH)
+//                                    AUD → au_becs_debit
+//                                    GBP → bacs_debit
+//                                    EUR → sepa_debit
+//                                    CAD → acss_debit
+//                                  Currencies without a bank-debit method are
+//                                  card-only. Set this only if your Stripe
+//                                  account needs something custom.
 
 import { authenticateSelf, isAdmin } from "./_shared/auth.js";
+import {
+  normalizeCurrency,
+  toStripeMinorUnits,
+  directDebitMethodFor
+} from "./_shared/currency.js";
 
 const PORTAL_OBJECT = "2-58156993";
 const GLOBAL_PORTAL_ID = "50506535214";
@@ -117,13 +125,20 @@ export async function handler(event) {
     }
 
     let base;
+    let programCurrency;
     try {
-      base = await resolveScheduledAmount({
+      const resolved = await resolveScheduledAmount({
         email: String(email).toLowerCase().trim(),
         portalId: portalId ? String(portalId) : null,
         index: idx,
         admin: isAdmin(session)
       });
+      base = resolved.amount;
+      // Currency is driven by the program_currency dropdown on the Portal
+      // record (falling back to the STRIPE_CURRENCY env, then NZD).
+      programCurrency = normalizeCurrency(
+        resolved.currency || process.env.STRIPE_CURRENCY || "nzd"
+      );
     } catch (err) {
       const status = err.statusCode || 502;
       return { statusCode: status, body: JSON.stringify({ error: err.message || "Could not resolve payment amount" }) };
@@ -147,24 +162,30 @@ export async function handler(event) {
     if (paymentType === "card") {
       paymentMethodTypes = ["card"];
     } else {
-      // Default to NZ BECS Direct Debit since Unearthed bills in NZD.
-      // Override via STRIPE_DIRECT_DEBIT_METHODS if your account has
-      // additional bank-debit methods enabled (or if Stripe renames the
-      // identifier — they've shifted naming across regions over time).
-      const envList = (process.env.STRIPE_DIRECT_DEBIT_METHODS || "nz_bank_account")
+      // Bank-debit method is driven by the program's currency: each Stripe
+      // bank-debit type only supports one currency (e.g. NZD→nz_bank_account,
+      // USD→us_bank_account, GBP→bacs_debit). STRIPE_DIRECT_DEBIT_METHODS can
+      // still override the auto-selection if an account needs something custom.
+      const envOverride = (process.env.STRIPE_DIRECT_DEBIT_METHODS || "")
         .split(",")
         .map(s => s.trim())
         .filter(Boolean);
-      if (envList.length === 0) {
-        return {
-          statusCode: 500,
-          body: JSON.stringify({
-            error: "Direct-debit checkout is not configured",
-            details: "Set STRIPE_DIRECT_DEBIT_METHODS in Netlify environment variables (e.g. \"us_bank_account,au_becs_debit\")."
-          })
-        };
+
+      if (envOverride.length > 0) {
+        paymentMethodTypes = envOverride;
+      } else {
+        const autoMethod = directDebitMethodFor(programCurrency);
+        if (!autoMethod) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({
+              error: `Bank transfer isn't available for ${programCurrency}.`,
+              details: "Please pay by card, or set STRIPE_DIRECT_DEBIT_METHODS to override."
+            })
+          };
+        }
+        paymentMethodTypes = [autoMethod];
       }
-      paymentMethodTypes = envList;
     }
 
     // Where to send the user back to after payment. Pinned to a known base
@@ -174,8 +195,10 @@ export async function handler(event) {
     const origin = (process.env.PORTAL_BASE_URL || "https://portal.unearthededucation.org")
       .replace(/\/+$/, "");
 
-    const currency = (process.env.STRIPE_CURRENCY || "nzd").toLowerCase();
-    const unitAmountCents = Math.round(charge * 100);
+    // Stripe wants the currency lower-cased and the amount in minor units
+    // (cents for most currencies, whole units for zero-decimal ones like JPY).
+    const currency = programCurrency.toLowerCase();
+    const unitAmountCents = toStripeMinorUnits(charge, programCurrency);
 
     const productName = (description && description.trim()) ||
       (paymentIndex ? `Payment ${paymentIndex}` : "Portal payment");
@@ -231,6 +254,7 @@ export async function handler(event) {
       params.append("metadata[base_amount]", String(baseAmount));
     }
     params.append("metadata[charge_amount]", String(charge));
+    params.append("metadata[currency]", programCurrency);
     // Tag whether this session was the card (with fee) or direct-debit
     // (no fee) variant. The processing_fee_rate metadata is only
     // meaningful on card sessions; we keep it on both for consistency
@@ -390,24 +414,30 @@ async function resolveScheduledAmount({ email, portalId, index, admin }) {
     throw amountError(400, "Could not determine which trip to pay for. Please reopen the payment from your trip page.");
   }
 
-  // 4. Read payment_amount_<index>, falling back to the global defaults record.
+  // 4. Read payment_amount_<index> AND program_currency, falling back to the
+  //    global defaults record for either value if the trip leaves it blank.
   const prop = `payment_amount_${index}`;
   const tripRes = await fetch(
-    `https://api.hubapi.com/crm/v3/objects/${PORTAL_OBJECT}/${targetPortalId}?properties=${prop}`,
+    `https://api.hubapi.com/crm/v3/objects/${PORTAL_OBJECT}/${targetPortalId}?properties=${prop},program_currency`,
     { headers }
   );
   if (!tripRes.ok) throw amountError(502, "Could not read the payment schedule.");
   const tripData = await tripRes.json();
   let raw = tripData.properties?.[prop];
+  let currency = tripData.properties?.program_currency;
 
-  if (raw == null || String(raw).trim() === "") {
+  if (raw == null || String(raw).trim() === "" ||
+      currency == null || String(currency).trim() === "") {
     const gRes = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/${PORTAL_OBJECT}/${GLOBAL_PORTAL_ID}?properties=${prop}`,
+      `https://api.hubapi.com/crm/v3/objects/${PORTAL_OBJECT}/${GLOBAL_PORTAL_ID}?properties=${prop},program_currency`,
       { headers }
     );
     if (gRes.ok) {
       const g = await gRes.json();
-      raw = g.properties?.[prop];
+      if (raw == null || String(raw).trim() === "") raw = g.properties?.[prop];
+      if (currency == null || String(currency).trim() === "") {
+        currency = g.properties?.program_currency;
+      }
     }
   }
 
@@ -415,7 +445,7 @@ async function resolveScheduledAmount({ email, portalId, index, admin }) {
   if (num == null || num <= 0) {
     throw amountError(400, `No scheduled amount is set for payment ${index}.`);
   }
-  return num;
+  return { amount: num, currency: currency || null };
 }
 
 // Parse a HubSpot amount field that may contain currency symbols/commas.

@@ -197,7 +197,7 @@ export async function handler(event) {
     // ============================================================
     const PORTAL_PROPERTIES = [
       // Core trip metadata
-      "portal_title", "destination", "price",
+      "portal_title", "destination", "price", "program_currency",
       // Tab content (rich text)
       "trip_information_content", "destination_overview_content",
       "travel_information_content", "general_information_content",
@@ -324,24 +324,25 @@ async function fetchPortalCards(portalIds, OBJECT, headers) {
         headers,
         body: JSON.stringify({
           inputs: portalIds.map(id => ({ id: String(id) })),
-          properties: ["portal_title", "destination", "price"]
+          properties: ["portal_title", "destination", "price", "program_currency"]
         })
       }
     );
     if (!res.ok) {
       console.warn("[portal] picker batch read non-OK:", res.status);
-      return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null }));
+      return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null, currency: null }));
     }
     const data = await res.json();
     return (data.results || []).map(r => ({
       id: String(r.id),
       title: r.properties?.portal_title || "(untitled trip)",
       destination: r.properties?.destination || "",
-      price: r.properties?.price || null
+      price: r.properties?.price || null,
+      currency: r.properties?.program_currency || null
     })).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
   } catch (err) {
     console.warn("[portal] picker batch read threw:", err?.message || err);
-    return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null }));
+    return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null, currency: null }));
   }
 }
 
