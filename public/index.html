@@ -1405,6 +1405,22 @@
         `;
       });
 
+    // Extra ad-hoc resource fields (paired name + link, 1..5). Only rendered
+    // when a link URL is set; the card title comes from the matching name
+    // field (falling back to a generic label if the name was left blank).
+    for (let n = 1; n <= 5; n++) {
+      const url = String(portalData[`extra_field_link_${n}`] || "").trim();
+      if (!url) continue;
+      const name = String(portalData[`extra_field_name_${n}`] || "").trim();
+      const title = (name || `Resource ${n}`).toUpperCase();
+      cards.push(`
+          <div class="manual-card">
+            <h4>${attrEsc(title)}</h4>
+            <a href="${attrEsc(url)}" target="_blank" rel="noopener" class="manual-link">VIEW DOCUMENT</a>
+          </div>
+        `);
+    }
+
     if (cards.length === 0) {
       return `<div class="manuals-empty">No resources have been added yet.</div>`;
     }

@@ -234,6 +234,14 @@ export async function handler(event) {
       "optional_activity_flyer", "sightseeing_flyers", "travelling_well_brief",
       "personal_spending__money_handling",
       "generic_kit_info_flyer", "fundraising_team_tool", "fundraising_templates",
+      // Extra ad-hoc resource fields (paired name + link, 1..5). Shown on the
+      // Manuals tab only when filled; the name is the card title, the link is
+      // the URL.
+      "extra_field_name_1", "extra_field_link_1",
+      "extra_field_name_2", "extra_field_link_2",
+      "extra_field_name_3", "extra_field_link_3",
+      "extra_field_name_4", "extra_field_link_4",
+      "extra_field_name_5", "extra_field_link_5",
       // Insurance + visas + documents
       "insurance_overview__faqs", "insurance_policy_wording",
       "visa_information",
