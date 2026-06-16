@@ -35,21 +35,20 @@ record, id `50506535214`, if you want a portal-wide default).
 ## 2. Stripe account requirements
 
 - **Cards** work for any supported currency with no extra setup.
-- **Bank transfer (no-fee direct debit)** only appears for currencies that
-  have a matching Stripe bank-debit method, and that method must be enabled in
-  **Stripe → Settings → Payment methods**:
+- **Bank transfer (no-fee direct debit)** is offered for **NZD only**, since
+  that's the only bank-debit method enabled on the Stripe account. Every other
+  currency is **card-only** — the bank-transfer button is hidden automatically.
 
   | Currency | Stripe bank-debit method | Region shown |
   |----------|--------------------------|--------------|
   | NZD | `nz_bank_account` (NZ BECS) | NZ ONLY |
-  | USD | `us_bank_account` (ACH)     | US ONLY |
-  | AUD | `au_becs_debit`             | AU ONLY |
-  | GBP | `bacs_debit`                | UK ONLY |
-  | EUR | `sepa_debit`                | EU ONLY |
-  | CAD | `acss_debit`                | CA ONLY |
 
-  Currencies without a row above are **card-only** — the bank-transfer button
-  is hidden automatically.
+  To enable bank transfer for another currency later, add it to
+  `DIRECT_DEBIT_METHOD_BY_CURRENCY` (and `BANK_REGION_LABEL`) in
+  `netlify/functions/_shared/currency.js`, mirror it in `BANK_DEBIT_REGION` in
+  `public/index.html`, and enable the matching method in **Stripe → Settings →
+  Payment methods**: USD→`us_bank_account`, AUD→`au_becs_debit`,
+  GBP→`bacs_debit`, EUR→`sepa_debit`, CAD→`acss_debit`.
 
 - Stripe also requires that the charge currency is supported by your Stripe
   account / connected payout setup. Test each currency once in Stripe test

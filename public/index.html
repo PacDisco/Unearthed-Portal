@@ -1325,11 +1325,12 @@
     "USD","EUR","GBP","CAD","AUD","NZD","JPY","CHF",
     "SGD","HKD","SEK","NOK","DKK","ZAR","AED"
   ];
-  // Currencies for which a Stripe bank-debit (no-fee) method exists, plus the
-  // region hint shown on the bank-transfer option.
+  // Currencies for which the no-fee bank-transfer option is offered. Restricted
+  // to NZD only (the only bank-debit method enabled on the Stripe account);
+  // every other currency is card-only. Keep in sync with
+  // DIRECT_DEBIT_METHOD_BY_CURRENCY in netlify/functions/_shared/currency.js.
   const BANK_DEBIT_REGION = {
-    NZD: "NZ ONLY", USD: "US ONLY", AUD: "AU ONLY",
-    GBP: "UK ONLY", EUR: "EU ONLY", CAD: "CA ONLY"
+    NZD: "NZ ONLY"
   };
   function programCurrency() {
     const c = String(portalData.program_currency || "").trim().toUpperCase();

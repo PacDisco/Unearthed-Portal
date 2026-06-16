@@ -40,25 +40,20 @@ const ZERO_DECIMAL_CURRENCIES = new Set([
 ]);
 
 // Map a currency to the Stripe bank-debit payment_method_type that supports
-// it, where one exists. Currencies without an entry can only be paid by card.
+// it. The no-fee bank-transfer option is intentionally restricted to NZD only
+// (the only bank-debit method enabled on Unearthed's Stripe account). All
+// other currencies are card-only. To enable bank transfer for another
+// currency, add it here AND enable the matching method in Stripe:
+//   USD → us_bank_account, AUD → au_becs_debit, GBP → bacs_debit,
+//   EUR → sepa_debit, CAD → acss_debit.
 const DIRECT_DEBIT_METHOD_BY_CURRENCY = {
-  NZD: "nz_bank_account", // NZ BECS Direct Debit
-  USD: "us_bank_account", // ACH Direct Debit
-  AUD: "au_becs_debit",   // BECS Direct Debit
-  GBP: "bacs_debit",      // Bacs Direct Debit
-  EUR: "sepa_debit",      // SEPA Direct Debit
-  CAD: "acss_debit"       // Pre-authorized debit (Canada)
+  NZD: "nz_bank_account" // NZ BECS Direct Debit
 };
 
 // Region hint shown on the bank-transfer payment option, since each bank-debit
 // method only works for payers in that currency's home region.
 const BANK_REGION_LABEL = {
-  NZD: "NZ ONLY",
-  USD: "US ONLY",
-  AUD: "AU ONLY",
-  GBP: "UK ONLY",
-  EUR: "EU ONLY",
-  CAD: "CA ONLY"
+  NZD: "NZ ONLY"
 };
 
 // Normalise an arbitrary input to a supported uppercase ISO code, falling
