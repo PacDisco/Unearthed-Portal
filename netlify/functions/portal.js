@@ -234,8 +234,9 @@ export async function handler(event) {
       "optional_activity_flyer", "sightseeing_flyers", "travelling_well_brief",
       "personal_spending__money_handling",
       "generic_kit_info_flyer", "fundraising_team_tool", "fundraising_templates",
-      // Insurance + documents
+      // Insurance + visas + documents
       "insurance_overview__faqs", "insurance_policy_wording",
+      "visa_information",
       "documents_upload_form",
       // Message board
       "message_board", "message_board_posted_at"
