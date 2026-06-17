@@ -91,10 +91,16 @@ export async function handler(event) {
       paymentIndex,
       portalId,
       description,
+      customAmount,
       paymentType: rawPaymentType
-      // NOTE: baseAmount / chargeAmount from the client are intentionally
-      // ignored now. The amount is derived server-side from HubSpot so a
-      // user can't tamper with the price they pay.
+      // NOTE: For SCHEDULED installments, baseAmount / chargeAmount from the
+      // client are intentionally ignored — the amount is derived server-side
+      // from HubSpot so a user can't tamper with the price they pay.
+      //
+      // For a CUSTOM "pay what you choose" payment, the amount is by
+      // definition chosen by the payer, so we accept `customAmount` from the
+      // client — but still validate it's a sane positive number and resolve
+      // the program currency (and verify trip association) server-side.
     } = body;
 
     if (!email) {
@@ -110,35 +116,62 @@ export async function handler(event) {
     // as a card payment to keep the original behaviour as the safe default.
     const paymentType = rawPaymentType === "direct_debit" ? "direct_debit" : "card";
 
-    // ----- Server-authoritative amount -----
-    // We do NOT trust the amount sent by the browser. Instead we read the
-    // scheduled installment amount (payment_amount_N) straight off the
-    // verified user's Portal record in HubSpot, and apply the 3% card fee
-    // here. This closes a price-tampering hole where the client could ask
-    // to be charged any amount it liked.
-    const idx = parseInt(paymentIndex, 10);
-    if (!Number.isInteger(idx) || idx < 1 || idx > 10) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid paymentIndex (must be 1–10)" }) };
-    }
+    // ----- Resolve the base amount -----
+    // Two modes:
+    //   1. SCHEDULED installment (paymentIndex 1–10): we do NOT trust the
+    //      amount sent by the browser — we read payment_amount_N straight off
+    //      the verified user's Portal record in HubSpot. This closes a
+    //      price-tampering hole where the client could ask to be charged any
+    //      amount it liked.
+    //   2. CUSTOM amount: the payer chooses how much to pay, so we accept
+    //      `customAmount` from the client (validated below) and only resolve
+    //      the program currency + trip association server-side.
     if (!process.env.HUBSPOT_API_KEY) {
       return { statusCode: 500, body: JSON.stringify({ error: "HUBSPOT_API_KEY is not set" }) };
+    }
+
+    const customAmountNum = parseAmount(customAmount);
+    const isCustom = customAmountNum != null;
+
+    let idx = null;
+    if (!isCustom) {
+      idx = parseInt(paymentIndex, 10);
+      if (!Number.isInteger(idx) || idx < 1 || idx > 10) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid paymentIndex (must be 1–10)" }) };
+      }
     }
 
     let base;
     let programCurrency;
     try {
-      const resolved = await resolveScheduledAmount({
-        email: String(email).toLowerCase().trim(),
-        portalId: portalId ? String(portalId) : null,
-        index: idx,
-        admin: isAdmin(session)
-      });
-      base = resolved.amount;
-      // Currency is driven by the program_currency dropdown on the Portal
-      // record (falling back to the STRIPE_CURRENCY env, then NZD).
-      programCurrency = normalizeCurrency(
-        resolved.currency || process.env.STRIPE_CURRENCY || "nzd"
-      );
+      if (isCustom) {
+        // Guard against zero/negative and absurdly large typed amounts.
+        if (customAmountNum <= 0 || customAmountNum > 1000000) {
+          return { statusCode: 400, body: JSON.stringify({ error: "Please enter a payment amount greater than 0." }) };
+        }
+        const ctx = await resolvePortalCurrency({
+          email: String(email).toLowerCase().trim(),
+          portalId: portalId ? String(portalId) : null,
+          admin: isAdmin(session)
+        });
+        base = customAmountNum;
+        programCurrency = normalizeCurrency(
+          ctx.currency || process.env.STRIPE_CURRENCY || "nzd"
+        );
+      } else {
+        const resolved = await resolveScheduledAmount({
+          email: String(email).toLowerCase().trim(),
+          portalId: portalId ? String(portalId) : null,
+          index: idx,
+          admin: isAdmin(session)
+        });
+        base = resolved.amount;
+        // Currency is driven by the program_currency dropdown on the Portal
+        // record (falling back to the STRIPE_CURRENCY env, then NZD).
+        programCurrency = normalizeCurrency(
+          resolved.currency || process.env.STRIPE_CURRENCY || "nzd"
+        );
+      }
     } catch (err) {
       const status = err.statusCode || 502;
       return { statusCode: status, body: JSON.stringify({ error: err.message || "Could not resolve payment amount" }) };
@@ -446,6 +479,80 @@ async function resolveScheduledAmount({ email, portalId, index, admin }) {
     throw amountError(400, `No scheduled amount is set for payment ${index}.`);
   }
   return { amount: num, currency: currency || null };
+}
+
+// ----- Resolve the program currency for a custom (payer-chosen) amount -----
+// Mirrors steps 1–3 of resolveScheduledAmount: verifies the caller is actually
+// associated with the trip (so a user can't pay against someone else's portal),
+// then reads program_currency off the Portal record, falling back to the global
+// defaults record. Throws an Error with `.statusCode` on any problem.
+async function resolvePortalCurrency({ email, portalId, admin }) {
+  const headers = {
+    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+    "Content-Type": "application/json"
+  };
+
+  // 1. Resolve the contact id.
+  const contactRes = await fetch(
+    "https://api.hubapi.com/crm/v3/objects/contacts/search",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        filterGroups: [{ filters: [{ propertyName: "email", operator: "EQ", value: email }] }],
+        properties: ["email"]
+      })
+    }
+  );
+  if (!contactRes.ok) throw amountError(502, "Could not look up your account.");
+  const contactData = await contactRes.json();
+  const contactId = contactData.results?.[0]?.id;
+  if (!contactId) throw amountError(404, "Account not found.");
+
+  // 2. List the portals this contact is associated with.
+  const assocRes = await fetch(
+    `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/${PORTAL_OBJECT}`,
+    { headers }
+  );
+  const assoc = assocRes.ok ? await assocRes.json() : { results: [] };
+  const myPortalIds = (assoc.results || []).map(r => String(r.toObjectId)).filter(Boolean);
+
+  // 3. Decide which portal we're paying against — and verify entitlement.
+  let targetPortalId = portalId;
+  if (admin) {
+    if (!targetPortalId) throw amountError(400, "Missing portalId.");
+  } else if (targetPortalId) {
+    if (!myPortalIds.includes(targetPortalId)) {
+      throw amountError(403, "That trip isn't associated with your account.");
+    }
+  } else if (myPortalIds.length === 1) {
+    targetPortalId = myPortalIds[0];
+  } else {
+    throw amountError(400, "Could not determine which trip to pay for. Please reopen the payment from your trip page.");
+  }
+
+  // 4. Read program_currency, falling back to the global defaults record.
+  const tripRes = await fetch(
+    `https://api.hubapi.com/crm/v3/objects/${PORTAL_OBJECT}/${targetPortalId}?properties=program_currency`,
+    { headers }
+  );
+  let currency = null;
+  if (tripRes.ok) {
+    const tripData = await tripRes.json();
+    currency = tripData.properties?.program_currency;
+  }
+  if (currency == null || String(currency).trim() === "") {
+    const gRes = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/${PORTAL_OBJECT}/${GLOBAL_PORTAL_ID}?properties=program_currency`,
+      { headers }
+    );
+    if (gRes.ok) {
+      const g = await gRes.json();
+      currency = g.properties?.program_currency;
+    }
+  }
+
+  return { currency: currency || null };
 }
 
 // Parse a HubSpot amount field that may contain currency symbols/commas.
