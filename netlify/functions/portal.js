@@ -203,6 +203,9 @@ export async function handler(event) {
       "travel_information_content", "general_information_content",
       "family_information_content", "payments_information_content",
       "faqs", "hs_object_id",
+      // When ticked, the school is collecting payments directly, so the
+      // portal hides all payment options and shows only the info text.
+      "school_collecting_payments",
       // Payment form URLs
       "payments_form_url", "payment_form_url",
       // Schedule / itinerary
