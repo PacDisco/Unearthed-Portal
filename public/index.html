@@ -760,6 +760,119 @@
 
     .payment-btn:hover { opacity: 0.85; }
 
+    /* Totals summary: program total / amount paid / left to pay */
+    .payments-summary {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .payments-summary-item {
+      flex: 1;
+      min-width: 120px;
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+    .payments-summary-item .label {
+      font-size: 10px;
+      letter-spacing: 1.3px;
+      font-weight: 600;
+      color: #999;
+      text-transform: uppercase;
+    }
+    .payments-summary-item .value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #231f20;
+      margin-top: 6px;
+    }
+    .payments-summary-item.paid .value { color: #5b8a73; }
+    .payments-summary-item.left .value { color: #e8694a; }
+    @media (max-width: 600px) {
+      .payments-summary-item { min-width: calc(50% - 6px); }
+    }
+
+    /* Custom-amount "make a payment" field */
+    .custom-payment {
+      background: #f9f8f2;
+      border: 1px solid #e2decf;
+      border-radius: 6px;
+      padding: 20px;
+      margin-bottom: 8px;
+    }
+    .custom-payment-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+      color: #999;
+      margin-bottom: 12px;
+    }
+    .custom-payment-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      border: 1.5px solid #e2decf;
+      border-radius: 5px;
+      padding: 8px 12px;
+      max-width: 260px;
+    }
+    .custom-payment-row:focus-within { border-color: #2d6b74; }
+    .custom-payment-currency {
+      font-size: 13px;
+      font-weight: 700;
+      color: #999;
+      letter-spacing: 0.5px;
+    }
+    .custom-payment-input {
+      flex: 1;
+      width: 100%;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 20px;
+      font-weight: 700;
+      color: #231f20;
+    }
+    .custom-payment-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .custom-pay-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      border: 1.5px solid transparent;
+      border-radius: 5px;
+      padding: 11px 18px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .custom-pay-btn--card {
+      background: #e8694a;
+      color: #fff;
+      border-color: #e8694a;
+    }
+    .custom-pay-btn--card:hover { background: #d4583a; border-color: #d4583a; }
+    .custom-pay-btn--debit {
+      background: #fff;
+      color: #2d6b74;
+      border-color: #2d6b74;
+    }
+    .custom-pay-btn--debit:hover { background: #ecf6f7; color: #1f4e54; border-color: #1f4e54; }
+    .custom-payment-note {
+      font-size: 11px;
+      color: #999;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
     .payments-schedule {
       margin-top: 24px;
       border-top: 1px solid #e2decf;
@@ -1770,6 +1883,93 @@
     return false;
   }
 
+  // Click handler for the "MAKE A PAYMENT" custom-amount field. Reads the
+  // amount the user typed, then creates a Stripe Checkout Session for that
+  // amount via /.netlify/functions/create-checkout-session — exactly the same
+  // flow the per-row buttons use, just with a payer-chosen `customAmount`
+  // instead of a fixed paymentIndex. paymentType is "card" (+3% fee, applied
+  // server-side) or "direct_debit" (no fee).
+  async function startCustomCheckout(event, btn, paymentType) {
+    event.preventDefault();
+    if (window.__stripeCheckoutBusy) return false;
+
+    const container = btn.closest(".custom-payment");
+    const input = document.getElementById("customPaymentAmount");
+    const amount = input ? parseFloat(String(input.value).replace(/[^0-9.]/g, "")) : NaN;
+    if (!isFinite(amount) || amount <= 0) {
+      alert("Please enter a payment amount greater than 0.");
+      if (input) input.focus();
+      return false;
+    }
+
+    window.__stripeCheckoutBusy = true;
+
+    const fallbackHref = (container && container.dataset.fallback) || "";
+    const newWin = window.open("about:blank", "_blank");
+
+    const buttons = container ? container.querySelectorAll(".custom-pay-btn") : [];
+    buttons.forEach(b => { b.style.opacity = "0.55"; b.style.pointerEvents = "none"; });
+
+    try {
+      const payload = {
+        email,
+        // The payer chooses this amount; the server validates it and applies
+        // any card processing fee. Rounded to cents here for tidiness.
+        customAmount: Math.round(amount * 100) / 100,
+        portalId: (container && container.dataset.portalId) || portalData.hs_object_id || null,
+        description: (container && container.dataset.description) || "Payment",
+        paymentType: paymentType === "direct_debit" ? "direct_debit" : "card"
+      };
+
+      const res = await apiFetch("/.netlify/functions/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      let data = {};
+      try { data = await res.json(); } catch (e) { /* ignore */ }
+
+      if (res.ok && data.url) {
+        if (newWin) newWin.location.href = data.url;
+        else window.location.href = data.url;
+        return false;
+      }
+
+      console.error("Custom checkout creation failed:", data);
+      const haveFallback = !!(fallbackHref && fallbackHref !== "#");
+      if (newWin) {
+        if (haveFallback) newWin.location.href = fallbackHref;
+        else newWin.close();
+      }
+      alert(
+        "Could not start the payment. " +
+        (data.error ? "(" + data.error + ") " : "") +
+        (haveFallback
+          ? "Opening the standard payment page instead."
+          : "Please try again in a moment, or contact info@unearthededucation.org if it keeps failing.")
+      );
+
+    } catch (err) {
+      console.error("Custom checkout error:", err);
+      const haveFallback = !!(fallbackHref && fallbackHref !== "#");
+      if (newWin) {
+        if (haveFallback) newWin.location.href = fallbackHref;
+        else newWin.close();
+      }
+      alert(
+        "Could not reach the payment service. " +
+        (haveFallback
+          ? "Opening the standard payment page instead."
+          : "Please try again in a moment, or contact info@unearthededucation.org if it keeps failing.")
+      );
+    } finally {
+      buttons.forEach(b => { b.style.opacity = ""; b.style.pointerEvents = ""; });
+      window.__stripeCheckoutBusy = false;
+    }
+    return false;
+  }
+
   async function init(retries = 3) {
     try {
       // Admins fetch a specific portal by id. Regular users fetch
@@ -2150,13 +2350,30 @@
 
     const paidData = await paidPromise;
 
-    let btnHtml = "";
     let infoHtml = "";
 
     if (paymentsInfo) {
       infoHtml = `<div class="payments-header">${paymentsInfo}</div>`;
     }
 
+    // If the school is collecting payments directly (school_collecting_payments
+    // ticked on the HubSpot Portal record), hide ALL payment options — the
+    // custom-amount field, the totals summary, and the schedule — and show only
+    // the payments info text, resolved by the same rules used above. HubSpot
+    // checkbox values arrive as the strings "true"/"false", so compare against
+    // "true" explicitly (the string "false" is otherwise truthy).
+    const schoolCollecting =
+      String(portalData.school_collecting_payments).toLowerCase() === "true";
+    if (schoolCollecting) {
+      return infoHtml;
+    }
+
+    // The legacy "MAKE A PAYMENT & SEE PAYMENT HISTORY" button used to send the
+    // user off to an external payment_form_url. We now keep payment in-portal
+    // via the custom-amount field below (built later in this function), but we
+    // still derive the old URL to use as a graceful fallback if our
+    // create-checkout-session call ever fails (e.g. a blocked popup).
+    let legacyFallbackUrl = "";
     if (paymentFormUrl) {
       // Some payment-form URLs already contain a query string (e.g. a shared
       // Stripe-payment-link or HubSpot-page URL with tracking params). Use
@@ -2164,7 +2381,7 @@
       // like "...?foo=bar?email=jake@…" which silently breaks the email
       // prefill.
       const sep = paymentFormUrl.includes("?") ? "&" : "?";
-      btnHtml = `<a href="${paymentFormUrl}${sep}email=${encodeURIComponent(email)}" target="_blank" class="payment-btn">MAKE A PAYMENT &amp; SEE PAYMENT HISTORY</a>`;
+      legacyFallbackUrl = `${paymentFormUrl}${sep}email=${encodeURIComponent(email)}`;
     }
 
     // Build a map of paid entries keyed by their schedule row index (1..10).
@@ -2326,9 +2543,88 @@
       </div>
     ` : "";
 
+    // ----- Totals summary: program total, amount paid, amount left -----
+    // Tolerant numeric parse for HubSpot money fields that may carry symbols
+    // or commas (e.g. "$12,500").
+    function toNum(v) {
+      if (v == null || v === "") return null;
+      const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
+      return isFinite(n) ? n : null;
+    }
+
+    // Program total: prefer the associated Deal amount (what the parent is
+    // actually billed), falling back to the Portal record's list price.
+    let programTotal = toNum(paidData && paidData.dealAmount);
+    if (programTotal == null) programTotal = toNum(portalData.price);
+
+    // Amount paid: prefer the deal's total_amount_paid roll-up; otherwise sum
+    // the individual parsed payment entries.
+    let amountPaid = toNum(paidData && paidData.totalAmountPaid);
+    if (amountPaid == null && paidData && Array.isArray(paidData.payments)) {
+      amountPaid = paidData.payments.reduce((sum, e) => sum + (toNum(e.amount) || 0), 0);
+    }
+    if (amountPaid == null) amountPaid = 0;
+
+    const amountLeft = (programTotal != null)
+      ? Math.max(programTotal - amountPaid, 0)
+      : null;
+
+    const summaryHtml = (programTotal != null || amountPaid > 0) ? `
+      <div class="payments-summary">
+        <div class="payments-summary-item">
+          <div class="label">Program Total</div>
+          <div class="value">${programTotal != null ? fmtMoney(programTotal) : '<span class="tbc">TBC</span>'}</div>
+        </div>
+        <div class="payments-summary-item paid">
+          <div class="label">Amount Paid</div>
+          <div class="value">${fmtMoney(amountPaid)}</div>
+        </div>
+        <div class="payments-summary-item left">
+          <div class="label">Left to Pay</div>
+          <div class="value">${amountLeft != null ? fmtMoney(amountLeft) : '<span class="tbc">TBC</span>'}</div>
+        </div>
+      </div>
+    ` : "";
+
+    // ----- Custom-amount payment field (replaces the legacy external link) -----
+    // Lets the parent type any amount and pay it via the same in-portal Stripe
+    // Checkout flow the schedule rows use. Pre-fills with the remaining balance
+    // when we know it. Bank transfer is only offered for currencies with a
+    // matching Stripe bank-debit method (NZD today).
+    const tripName    = portalData.portal_title || portalData.destination || "Unearthed";
+    const customDesc  = `${tripName} — Payment`;
+    const prefill     = (amountLeft != null && amountLeft > 0) ? amountLeft.toFixed(2) : "";
+    const curCode     = programCurrency();
+    const debitButton = currencyHasBankDebit()
+      ? `<button type="button" class="custom-pay-btn custom-pay-btn--debit"
+            onclick="return startCustomCheckout(event, this, 'direct_debit');">PAY BY BANK TRANSFER · NO FEE</button>`
+      : "";
+
+    const payHtml = `
+      <div class="custom-payment"
+           data-portal-id="${attrEsc(portalData.hs_object_id || "")}"
+           data-description="${attrEsc(customDesc)}"
+           data-fallback="${attrEsc(legacyFallbackUrl)}">
+        <div class="custom-payment-label">MAKE A PAYMENT</div>
+        <div class="custom-payment-row">
+          <span class="custom-payment-currency">${curCode}</span>
+          <input id="customPaymentAmount" class="custom-payment-input"
+                 type="number" min="1" step="0.01" inputmode="decimal"
+                 value="${prefill}" placeholder="0.00" aria-label="Payment amount" />
+        </div>
+        <div class="custom-payment-actions">
+          <button type="button" class="custom-pay-btn custom-pay-btn--card"
+            onclick="return startCustomCheckout(event, this, 'card');">PAY BY CARD · +3% FEE</button>
+          ${debitButton}
+        </div>
+        <div class="custom-payment-note">Enter the amount you'd like to pay, then choose how to pay. Card payments include a 3% processing fee; bank transfer has no fee.</div>
+      </div>
+    `;
+
     return `
       ${infoHtml}
-      ${btnHtml}
+      ${summaryHtml}
+      ${payHtml}
       ${scheduleHtml}
     `;
   }
