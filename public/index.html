@@ -2557,12 +2557,14 @@
     let programTotal = toNum(paidData && paidData.dealAmount);
     if (programTotal == null) programTotal = toNum(portalData.price);
 
-    // Amount paid: prefer the deal's total_amount_paid roll-up; otherwise sum
-    // the individual parsed payment entries.
-    let amountPaid = toNum(paidData && paidData.totalAmountPaid);
-    if (amountPaid == null && paidData && Array.isArray(paidData.payments)) {
+    // Amount paid: sum the parsed Payment 1–10 entries (each is one recorded
+    // payment off the deal). This is the source of truth. We only fall back to
+    // the deal's total_amount_paid roll-up if no payment rows came back at all.
+    let amountPaid = null;
+    if (paidData && Array.isArray(paidData.payments) && paidData.payments.length) {
       amountPaid = paidData.payments.reduce((sum, e) => sum + (toNum(e.amount) || 0), 0);
     }
+    if (amountPaid == null) amountPaid = toNum(paidData && paidData.totalAmountPaid);
     if (amountPaid == null) amountPaid = 0;
 
     const amountLeft = (programTotal != null)
