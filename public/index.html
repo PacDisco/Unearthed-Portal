@@ -688,6 +688,11 @@
       border-top-color: #aed1db;
     }
 
+    /* Student's uploaded e-tickets — warm accent so it reads as "ready". */
+    .flight-card.tickets {
+      border-top-color: #d6a380;
+    }
+
     .flight-card h4 {
       margin: 0 0 8px;
       font-size: 11px;
@@ -2223,6 +2228,19 @@
       return `<div class="flight-detail"><strong>${label}:</strong> ${formatted}</div>`;
     }
 
+    // Student's uploaded e-tickets. The deal property `ue_airline_tickets`
+    // holds a link to their Drive folder; only show the card once it's set.
+    const ticketsUrl = (p.ue_airline_tickets || "").trim();
+    const ticketsCard = /^https?:\/\//i.test(ticketsUrl) ? `
+        <div class="flight-card tickets">
+          <h4>YOUR TICKETS</h4>
+          <div class="flight-date">E-tickets ready</div>
+          <div class="readmore-content">
+            <div class="flight-detail">Your flight tickets have been uploaded. Open the folder to view and download them.</div>
+          </div>
+          <a href="${ticketsUrl}" target="_blank" rel="noopener" class="flight-link">VIEW &amp; DOWNLOAD</a>
+        </div>` : "";
+
     return `
       <div class="flights-grid">
         <div class="flight-card">
@@ -2240,7 +2258,7 @@
             ${detail("Airline(s)", p.return_flight_airlines)}
             ${detail("Routing", p.return_flight_routing)}
           </div>
-        </div>
+        </div>${ticketsCard}
       </div>
       <div class="insurance-section">
         <div class="insurance-section-label">INSURANCE &amp; VISAS</div>

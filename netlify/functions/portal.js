@@ -64,6 +64,9 @@ export async function handler(event) {
     // the response can include availableTripCount for the "Switch trip"
     // header link.
     let associatedPortalIds = null;
+    // Captured on the email-auth path so we can look up this student's deal
+    // (for the uploaded airline-tickets folder link) after resolving the portal.
+    let contactId = null;
 
     if (adminPortalId) {
       portalId = String(adminPortalId);
@@ -98,7 +101,7 @@ export async function handler(event) {
       }
 
       const contactData = await contactRes.json();
-      const contactId = contactData.results?.[0]?.id;
+      contactId = contactData.results?.[0]?.id;
 
       if (!contactId) {
         return {
@@ -296,6 +299,19 @@ export async function handler(event) {
     const tripProps = portal.properties || {};
     const merged = mergeWithGlobalFallback(tripProps, globalProps);
 
+    // The uploaded flight-ticket folder link lives on the student's DEAL
+    // (property `ue_airline_tickets`, written by the flights uploader), not on
+    // the trip/portal record — so fetch it separately for the logged-in
+    // student. Admin (?portalId=) views have no specific student, so skip.
+    let ueAirlineTickets = null;
+    if (contactId) {
+      try {
+        ueAirlineTickets = await fetchStudentTicketsUrl(contactId, headers);
+      } catch (e) {
+        console.warn("[portal] airline-tickets lookup failed:", e?.message || e);
+      }
+    }
+
     // 4. Return data. `availableTripCount` lets the frontend decide
     //    whether to show a "Switch trip" link in the header (only
     //    relevant for users associated with more than one portal).
@@ -308,6 +324,7 @@ export async function handler(event) {
       statusCode: 200,
       body: JSON.stringify({
         ...merged,
+        ue_airline_tickets: ueAirlineTickets,
         labels,
         availableTripCount
       })
@@ -356,6 +373,44 @@ async function fetchPortalCards(portalIds, OBJECT, headers) {
     console.warn("[portal] picker batch read threw:", err?.message || err);
     return portalIds.map(id => ({ id, title: "(unknown trip)", destination: "", price: null, currency: null }));
   }
+}
+
+// Read the student's uploaded airline-tickets folder link from their deal.
+// The flights uploader writes the per-student Drive folder URL to the deal's
+// `ue_airline_tickets` property; we surface it so the student can view and
+// download their tickets from the portal. Returns the URL string, or null if
+// the contact has no deal / no link yet. Never throws fatally — the portal
+// must still load if this lookup fails.
+async function fetchStudentTicketsUrl(contactId, headers) {
+  // 1. Deals associated with this contact.
+  const assocRes = await fetch(
+    `https://api.hubapi.com/crm/v4/objects/contacts/${contactId}/associations/deals`,
+    { headers }
+  );
+  if (!assocRes.ok) return null;
+  const assoc = await assocRes.json();
+  const dealIds = (assoc.results || []).map(r => String(r.toObjectId)).filter(Boolean);
+  if (!dealIds.length) return null;
+
+  // 2. Read the ticket-folder URL from those deals; use the first that's set.
+  const readRes = await fetch(
+    "https://api.hubapi.com/crm/v3/objects/deals/batch/read",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        properties: ["ue_airline_tickets"],
+        inputs: dealIds.map(id => ({ id }))
+      })
+    }
+  );
+  if (!readRes.ok) return null;
+  const data = await readRes.json();
+  for (const d of (data.results || [])) {
+    const url = d.properties && d.properties.ue_airline_tickets;
+    if (url && String(url).trim()) return String(url).trim();
+  }
+  return null;
 }
 
 // Merge a trip record's properties on top of the global record's. For each
