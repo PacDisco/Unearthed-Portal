@@ -2524,7 +2524,7 @@
       legacyFallbackUrl = `${paymentFormUrl}${sep}email=${encodeURIComponent(email)}`;
     }
 
-    // Build a map of paid entries keyed by their schedule row index (1..10).
+    // Build a map of paid entries keyed by their schedule row index (1..15).
     const paidByIndex = {};
     if (paidData && Array.isArray(paidData.payments)) {
       paidData.payments.forEach(entry => {
@@ -2589,7 +2589,7 @@
 
     // Build payment schedule from associated portal object
     const rows = [];
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 15; i++) {
       const date = p[`payment_date_${i}`];
       const amount = p[`payment_amount_${i}`];
       if (!date && !amount) continue;
@@ -2697,7 +2697,7 @@
     let programTotal = toNum(paidData && paidData.dealAmount);
     if (programTotal == null) programTotal = toNum(portalData.price);
 
-    // Amount paid: sum the parsed Payment 1–10 entries (each is one recorded
+    // Amount paid: sum the parsed Payment 1–15 entries (each is one recorded
     // payment off the deal). This is the source of truth. We only fall back to
     // the deal's total_amount_paid roll-up if no payment rows came back at all.
     let amountPaid = null;

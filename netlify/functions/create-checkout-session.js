@@ -9,7 +9,7 @@
 // Expected POST body (JSON):
 //   {
 //     email:         "parent@example.com",       // required
-//     paymentIndex:  3,                           // 1..10, optional
+//     paymentIndex:  3,                           // 1..15, optional
 //     baseAmount:    1000.00,                     // listed installment amount
 //     chargeAmount:  1030.00,                     // total to charge for THIS method
 //                                                 //   (caller should pass base for direct debit,
@@ -118,7 +118,7 @@ export async function handler(event) {
 
     // ----- Resolve the base amount -----
     // Two modes:
-    //   1. SCHEDULED installment (paymentIndex 1–10): we do NOT trust the
+    //   1. SCHEDULED installment (paymentIndex 1–15): we do NOT trust the
     //      amount sent by the browser — we read payment_amount_N straight off
     //      the verified user's Portal record in HubSpot. This closes a
     //      price-tampering hole where the client could ask to be charged any
@@ -136,8 +136,8 @@ export async function handler(event) {
     let idx = null;
     if (!isCustom) {
       idx = parseInt(paymentIndex, 10);
-      if (!Number.isInteger(idx) || idx < 1 || idx > 10) {
-        return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid paymentIndex (must be 1–10)" }) };
+      if (!Number.isInteger(idx) || idx < 1 || idx > 15) {
+        return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid paymentIndex (must be 1–15)" }) };
       }
     }
 
