@@ -148,6 +148,9 @@ export async function handler(event) {
     // custom | scheduled | balance — recorded on the Stripe metadata.
     let paymentKind = "custom";
     let programCurrency;
+    // The student's HubSpot deal — sent to Stripe as hubspot_deal_id so the
+    // dashboard's payment sync logs the payment to exactly this deal.
+    let dealId = null;
     try {
       if (isCustom) {
         // Guard against zero/negative and absurdly large typed amounts.
@@ -160,6 +163,9 @@ export async function handler(event) {
           admin: isAdmin(session)
         });
         base = customAmountNum;
+        try {
+          dealId = (await fetchDealPayments(String(email).toLowerCase().trim()))?.dealId || null;
+        } catch { dealId = null; } // never block a payment over this
         programCurrency = normalizeCurrency(
           ctx.currency || process.env.STRIPE_CURRENCY || "nzd"
         );
@@ -171,6 +177,7 @@ export async function handler(event) {
           admin: isAdmin(session)
         });
         base = resolved.amount;
+        dealId = resolved.dealId || null;
         paymentKind = resolved.isBalance ? "balance" : "scheduled";
         // Currency is driven by the program_currency dropdown on the Portal
         // record (falling back to the STRIPE_CURRENCY env, then NZD).
@@ -303,6 +310,7 @@ export async function handler(event) {
     params.append("metadata[payment_type]", paymentType);
     params.append("metadata[processing_fee_rate]", paymentType === "card" ? "0.03" : "0");
     params.append("metadata[source]", "unearthed-portal-row-click");
+    if (dealId) params.append("metadata[hubspot_deal_id]", String(dealId));
 
     // Mirror metadata onto the PaymentIntent so it shows on the underlying
     // charge as well (useful for HubSpot's Stripe sync if you have one).
@@ -317,6 +325,7 @@ export async function handler(event) {
     params.append("payment_intent_data[metadata][charge_amount]", String(charge));
     params.append("payment_intent_data[metadata][payment_type]", paymentType);
     params.append("payment_intent_data[metadata][processing_fee_rate]", paymentType === "card" ? "0.03" : "0");
+    if (dealId) params.append("payment_intent_data[metadata][hubspot_deal_id]", String(dealId));
 
     const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
@@ -430,7 +439,8 @@ async function resolveScheduledAmount({ email, portalId, index, admin }) {
     amount: row.remaining,
     due: row.due,
     isBalance: row.status === "partial",
-    currency: schedule.currency
+    currency: schedule.currency,
+    dealId: deal.dealId || null
   };
 }
 
